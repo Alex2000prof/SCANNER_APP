@@ -1,0 +1,77 @@
+{% extends 'layout.html' %}
+{% block title %}Удаление коробки{% endblock %}
+{% block content %}
+<h2>Режим удаления коробки</h2>
+<p>Отсканируйте штрихкод коробки для удаления.</p>
+<input type="text" id="targetCode" placeholder="Сканируйте штрихкод коробки..." autofocus />
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const targetInput = document.getElementById('targetCode');
+  targetInput.focus();
+
+  function submitDeletion() {
+    const code = targetInput.value.trim();
+    if (code) {
+      Swal.fire({
+        title: 'Подтверждение удаления',
+        text: 'Вы действительно хотите удалить коробку с кодом ' + code + '?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Удалить',
+        cancelButtonText: 'Отмена'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          fetch('/delete_box', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_code: code })
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (data.status === 'success') {
+              Swal.fire('Удалено', 'Коробка удалена.', 'success')
+                .then(() => window.history.back());
+            } else {
+              Swal.fire('Ошибка', data.message, 'error')
+                .then(() => window.history.back());
+            }
+          })
+          .catch(err => {
+            Swal.fire('Ошибка', String(err), 'error')
+              .then(() => window.history.back());
+          });
+        } else {
+          window.history.back();
+        }
+      });
+    }
+  }
+
+  // Переопределяем window.onBarcodeScanned для этой страницы
+  window.onBarcodeScanned = function(scannedCode) {
+    console.log("Сканированный код для удаления коробки:", scannedCode);
+    targetInput.value = scannedCode;
+    // Сразу вызываем отправку
+    submitDeletion();
+  };
+
+  // На случай, если пользователь вручную нажмет Enter
+  targetInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      submitDeletion();
+    }
+  });
+});
+</script>
+
+<script>
+  // Настраиваем режим сканирования – отключаем QR, оставляем только Code-128
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.AndroidAudio && window.AndroidAudio.setQrEnabled) {
+      window.AndroidAudio.setQrEnabled(false);
+    }
+  });
+</script>
+{% endblock %}
+

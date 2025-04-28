@@ -1,0 +1,206 @@
+<!-- scan_box.html -->
+{% extends 'layout.html' %}
+{% block title %}Сканирование коробки{% endblock %}
+{% block content %}
+
+<h2>Коробка №{{ num_case }} (Поставка №{{ delivery_id }})</h2>
+<p>Отсканировано: <span id="scannedCount">{{ scanned_count }}</span> / {{ total_required }}</p>
+
+<!-- Блок "Последний скан" -->
+<div id="lastScanBlock" class="last-scan-block" style="display: none;">
+  <h3>Последний скан:</h3>
+  <p><strong>Уникальный код:</strong> <span id="lsUniq"></span></p>
+  <p><strong>Размер-Рост:</strong> <span id="lsSizeHeight"></span></p>
+  <p><strong>Артикул:</strong> <span id="lsArticul"></span></p>
+  <p><strong>Модель:</strong> <span id="lsModel"></span></p>
+  <p><strong>Цвет:</strong> <span id="lsColor"></span></p>
+</div>
+
+<!-- Поле для ручного ввода (по желанию) -->
+<input
+  type="text"
+  id="codeInput"
+  placeholder="Сканируйте товар или штрихкод коробки..."
+  autofocus
+/>
+
+<script>
+  const codeInput      = document.getElementById('codeInput');
+  const scannedCountEl = document.getElementById('scannedCount');
+  const totalRequired  = parseInt("{{ total_required }}", 10);
+  const boxId          = parseInt("{{ box_id }}", 10);
+
+  // Блок "Последний скан"
+  const lastScanBlock  = document.getElementById('lastScanBlock');
+  const lsUniq         = document.getElementById('lsUniq');
+  const lsSizeHeight   = document.getElementById('lsSizeHeight');
+  const lsArticul      = document.getElementById('lsArticul');
+  const lsModel        = document.getElementById('lsModel');
+  const lsColor        = document.getElementById('lsColor');
+
+  document.addEventListener('DOMContentLoaded', () => {
+    codeInput.focus();
+  });
+
+  // F9 => фокус
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'F9') {
+      e.preventDefault();
+      codeInput.focus();
+    }
+  });
+
+  // Если теряем фокус, через 200мс возвращаем
+  codeInput.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (document.activeElement !== codeInput) {
+        codeInput.focus();
+      }
+    }, 200);
+  });
+
+  // Если Enter или Paste — тоже отправляем
+  codeInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      const code = codeInput.value.trim();
+      if (code) submitScanCode(code);
+    }
+  });
+  codeInput.addEventListener('paste', function() {
+    setTimeout(() => {
+      const code = codeInput.value.trim();
+      if (code) submitScanCode(code);
+    }, 100);
+  });
+
+  // === AJAX отправка на сервер ===
+  function submitScanCode(code) {
+    fetch(`/scan_box/${boxId}/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.status === 'redirect') {
+        // Переходим на другую коробку
+        window.location.href = data.url;
+        return;
+      }
+      else if (data.status === 'success') {
+        // Успешно
+        // Вместо локального Audio — вызываем AndroidAudio.playSuccess()
+        if (window.AndroidAudio && window.AndroidAudio.playSuccess) {
+          window.AndroidAudio.playSuccess();
+        }
+
+        scannedCountEl.textContent = data.scanned_count;
+
+        if (data.last_item) {
+          lastScanBlock.style.display = 'block';
+          lsUniq.textContent       = data.last_item.Uniq       || '';
+          lsSizeHeight.textContent = data.last_item.SizeHeight || '';
+          lsArticul.textContent    = data.last_item.Articul    || '';
+          lsModel.textContent      = data.last_item.Models     || '';
+          lsColor.textContent      = data.last_item.Color      || '';
+
+          lastScanBlock.classList.add('success-highlight');
+          setTimeout(() => {
+            lastScanBlock.classList.remove('success-highlight');
+          }, 800);
+        }
+        if (data.completed) {
+          Swal.fire('Готово!', 'Коробка полностью заполнена.', 'success');
+        }
+        codeInput.value = '';
+        codeInput.focus();
+      }
+      else if (data.status === 'intermediate') {
+        // Двойной скан (сначала 1/2)
+        Swal.fire({
+          toast: true,
+          position: 'top-end',
+          icon: 'info',
+          title: data.message,
+          showConfirmButton: false,
+          timer: 2000
+        });
+        codeInput.value = '';
+        codeInput.focus();
+      }
+      else if (data.status === 'error') {
+        // Ошибка
+        if (window.AndroidAudio && window.AndroidAudio.playError) {
+          window.AndroidAudio.playError();
+        }
+        Swal.fire('Ошибка', data.message, 'error')
+          .then(() => codeInput.focus());
+        codeInput.value = '';
+      }
+    })
+    .catch(err => {
+      // Сетевая ошибка
+      if (window.AndroidAudio && window.AndroidAudio.playError) {
+        window.AndroidAudio.playError();
+      }
+      Swal.fire('Ошибка', String(err), 'error')
+        .then(() => codeInput.focus());
+      codeInput.value = '';
+    });
+  }
+
+  // === Если вы получаете Broadcast из MainActivity,
+  //     вызывается window.onBarcodeScanned(...).
+  window.onBarcodeScanned = function(scannedCode) {
+    console.log("Сканирован код на scan_box:", scannedCode);
+    // Вызываем submitScanCode
+    submitScanCode(scannedCode);
+  };
+</script>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    // Принудительно включаем Code128 + QR, если хотим именно эти
+    if (window.AndroidAudio && window.AndroidAudio.setQrEnabled) {
+      window.AndroidAudio.setQrEnabled(true); 
+    }
+  });
+  </script>
+<style>
+  .success-highlight {
+    background-color: #d4edda;
+    border: 2px solid #28a745;
+    animation: pulse 1.5s ease;
+  }
+  @keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+  }
+</style>
+
+<a href="{{ url_for('box_contents', box_id=box_id) }}" class="back-button">
+  Посмотреть содержимое
+</a>
+<a href="/boxes" class="back-button">
+  Вернуться к поставке
+</a>
+{% endblock %}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

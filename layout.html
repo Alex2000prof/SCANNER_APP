@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>{% block title %}DIVO Сканер{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap" rel="stylesheet">
+
+  <!-- Подключаем ваш CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+  <!-- SweetAlert2 (если нужно) -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <!-- (1) Подключаем manifest.json -->
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+
+  <!-- (2) Тема для адресной строки (Android) -->
+  <meta name="theme-color" content="#ff3c00">
+
+  <!-- (3) Фавикон и apple-touch-icon (на случай iOS) -->
+  <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/divo_logo.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/divo_logo.png') }}">
+</head>
+<body>
+  
+  <header>
+    <div class="header-content">
+      <!-- Заголовок и информация о пользователе -->
+      <div>
+        <h1>DIVO</h1>
+        {% if session.get('who') %}
+          <p style="font-size: 0.8em; margin: 0; color: #fff;">{{ session.get('who') }}</p>
+        {% endif %}
+      </div>
+      <!-- Горизонтальное меню -->
+      {% if session.get('who') %}
+      <nav class="main-nav">
+        {% if request.endpoint == 'main_menu' %}
+          <a href="{{ url_for('logout') }}" class="nav-link logout-link">Выйти</a>
+        {% else %}
+          <a href="{{ url_for('main_menu') }}" class="nav-link">Главное меню</a>
+        {% endif %}
+      </nav>
+      {% endif %}
+    </div>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer>
+    <p>© 2025</p>
+  </footer>
+
+  <!-- (4) Регистрируем Service Worker -->
+  <script>
+    if (typeof window.onBarcodeScanned !== 'function') {
+      window.onBarcodeScanned = function(scannedCode) {
+        console.log("Получен broadcast, но функция не определена:", scannedCode);
+      };
+    }
+  </script>
+
+<script>
+  (function() {
+    // Сохраняем предыдущую реализацию (если она есть)
+    var oldOnBarcodeScanned = window.onBarcodeScanned;
+    window.onBarcodeScanned = function(scannedCode) {
+      scannedCode = scannedCode.trim().toUpperCase();
+      // Если сканируется SPECIAL_CARRY, переходим на страницу carry
+      if (scannedCode === 'SPECIAL_CARRY') {
+        window.location.href = '/carry';
+        return;
+      }
+      // Обработка других кодов (например, админ-кодов)
+      if (scannedCode === 'DELETE') {
+        Swal.fire({
+          title: 'Режим удаления',
+          text: 'Выберите действие:',
+          showDenyButton: true,
+          showCancelButton: true,
+          confirmButtonText: 'Удалить коробку',
+          denyButtonText: 'Удалить скан',
+          cancelButtonText: 'Отмена'
+        }).then((result) => {
+          if (result.isConfirmed) {
+            window.location.href = '/delete_box';
+          } else if (result.isDenied) {
+            window.location.href = '/delete_scan';
+          }
+        });
+      } else {
+        if (typeof oldOnBarcodeScanned === 'function') {
+          oldOnBarcodeScanned(scannedCode);
+        } else {
+          console.log("Получен код:", scannedCode);
+        }
+      }
+    };
+  })();
+</script>
+
+  
+
+
+  <!-- <script src="{{ url_for('static', filename='js/admin_actions.js') }}"></script> -->
+</body>
+
+</html>
+
+
+
+
+
+
+

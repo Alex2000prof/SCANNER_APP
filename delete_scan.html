@@ -1,0 +1,76 @@
+{% extends 'layout.html' %}
+{% block title %}Удаление скана{% endblock %}
+{% block content %}
+<h2>Режим удаления скана</h2>
+<p>Отсканируйте штрихкод товара для удаления скана.</p>
+<input type="text" id="targetCode" placeholder="Сканируйте штрихкод товара..." autofocus />
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const targetInput = document.getElementById('targetCode');
+  targetInput.focus();
+
+  function submitDeletion() {
+    const code = targetInput.value.trim();
+    if (code) {
+      Swal.fire({
+        title: 'Подтверждение удаления',
+        text: 'Вы действительно хотите удалить скан?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Удалить',
+        cancelButtonText: 'Отмена'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          fetch('/delete_scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_code: code })
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (data.status === 'success') {
+              Swal.fire('Удалено', 'Скан удалён.', 'success')
+                .then(() => window.history.back());
+            } else {
+              Swal.fire('Ошибка', data.message, 'error')
+                .then(() => window.history.back());
+            }
+          })
+          .catch(err => {
+            Swal.fire('Ошибка', String(err), 'error')
+              .then(() => window.history.back());
+          });
+        } else {
+          window.history.back();
+        }
+      });
+    }
+  }
+
+  // Переопределяем window.onBarcodeScanned для удаления скана:
+  window.onBarcodeScanned = function(scannedCode) {
+    console.log("Сканированный код для удаления скана:", scannedCode);
+    targetInput.value = scannedCode;
+    submitDeletion();
+  };
+
+  targetInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      submitDeletion();
+    }
+  });
+});
+</script>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.AndroidAudio && window.AndroidAudio.setQrEnabled) {
+      window.AndroidAudio.setQrEnabled(true); // включаем QR для удаления скана
+    }
+  });
+</script>
+{% endblock %}
+
+
+

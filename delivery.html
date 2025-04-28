@@ -1,0 +1,81 @@
+{% extends 'layout.html' %}
+{% block title %}Номер поставки{% endblock %}
+{% block content %}
+<h2>Отсканируйте номер поставки/коробки</h2>
+
+<form id="deliveryForm" method="POST" action="/delivery">
+  <!-- Единственное поле ввода, которое может быть:
+       - "1677" (только число) -> обычный номер поставки
+       - "01677-007" (с дефисом) -> InnerBarcode -->
+  <input
+    type="text"
+    id="deliveryInput"
+    name="delivery_id"
+    required
+    autofocus
+    placeholder="Напр. 1677 или 01677-007"
+  />
+  <button type="submit">Поиск</button>
+</form>
+
+<script>
+  const deliveryForm  = document.getElementById('deliveryForm');
+  const deliveryInput = document.getElementById('deliveryInput');
+
+  // 1) При загрузке страницы — даём фокус полю ввода
+  document.addEventListener('DOMContentLoaded', () => {
+    deliveryInput.focus();
+  });
+
+  // 2) Если сканер вставляет код через paste — автосабмит
+  deliveryInput.addEventListener('paste', function(e) {
+    setTimeout(() => {
+      const code = deliveryInput.value.trim();
+      if (code) {
+        deliveryForm.submit();
+      }
+    }, 100);
+  });
+
+  // 3) Нажатие Enter — форма сама отправится (стандартное поведение HTML-формы)
+  //    Если хотите принудительно, можно раскомментировать:
+  /*
+  deliveryInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      deliveryForm.submit();
+    }
+  });
+  */
+
+  // 4) При нажатии F9 — фокусируем поле (если ТСД настроен на F9)
+  document.addEventListener('keydown', (e) => {
+    // В некоторых случаях e.keyCode===120, но чаще e.key==='F9'
+    if (e.key === 'F9') {
+      e.preventDefault();
+      deliveryInput.focus();
+    }
+  });
+
+  // 5) Если пользователь «ушёл» из поля (blur) — через 200 мс вернём фокус
+  deliveryInput.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (document.activeElement !== deliveryInput) {
+        deliveryInput.focus();
+      }
+    }, 200);
+  });
+
+  window.onBarcodeScanned = function(scannedCode) {
+    console.log("Сканирован код на delivery:", scannedCode);
+    const deliveryInput = document.getElementById('deliveryInput');
+    deliveryInput.value = scannedCode;
+    document.getElementById('deliveryForm').submit();
+  };
+</script>
+
+
+{% endblock %}
+
+
+

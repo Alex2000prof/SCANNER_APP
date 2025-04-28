@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Перенос товара</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Подключаем SweetAlert2 для модальных окон -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    html, body {
+    overflow-x: hidden;
+    margin: 0;
+    padding: 0;
+   }
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap');
+    body {
+      font-family: 'Montserrat', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      color: #333;
+    }
+    .transfer-container {
+      width: 90%;
+      max-width: 600px;
+      background: #fff;
+      border: 3px solid #ff3c00;
+      border-radius: 10px;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+      position: relative;
+      padding: 20px 20px 60px 20px;
+    }
+    /* Info-кнопка в самом верхнем правом углу */
+    .info-icon {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: linear-gradient(135deg, #ff3c00, #ff7733);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      font-size: 1.5em;
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      transition: background 0.3s;
+      z-index: 3;
+    }
+    .info-icon:hover {
+      background: linear-gradient(135deg, #e04400, #ff5733);
+    }
+    /* Popup с информацией */
+    .info-popup {
+      display: none;
+      position: absolute;
+      top: 60px;
+      right: 10px;
+      background: linear-gradient(135deg, #fff, #f0f0f0);
+      border: 2px solid #ff3c00;
+      border-radius: 8px;
+      padding: 10px;
+      width: 260px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      z-index: 3;
+    }
+    .info-popup h3 {
+      margin: 0 0 5px;
+      font-size: 1.2em;
+      color: #ff3c00;
+    }
+    .info-popup p {
+      margin: 3px 0;
+      font-size: 1em;
+      color: #333;
+    }
+    .info-popup .close-popup {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      background: none;
+      border: none;
+      font-size: 1.2em;
+      cursor: pointer;
+      color: #ff3c00;
+    }
+    .header-info {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 10px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #ccc;
+    }
+
+    .static-header {
+      font-size: 2em;
+      color: #ff3c00;
+      line-height: 1.1;  /* чуть плотнее строки */
+      text-align: center;
+    }
+
+    .warehouse-task-number,
+    .doc-info,
+    .remaining-tasks {
+      font-size: 1.2em;
+      margin: 3px 0;
+      color: #333;
+      font-weight: 600;
+    }
+    /* Информация о товаре */
+    .product-info {
+      text-align: center;
+      font-size: 1.2em;
+      color: #555;
+      margin-bottom: 10px;
+    }
+    .product-info span {
+      display: block;
+    }
+    /* Секции */
+    .transfer-section {
+      margin-bottom: 15px;
+      padding: 20px;
+      background: linear-gradient(135deg, #fafafa, #f0f0f0);
+      border: 2px solid #ccc;
+      border-radius: 8px;
+      transition: border-color 0.3s, background 0.3s, color 0.3s;
+      position: relative;
+    }
+    .transfer-section.active {
+      border-color: #FFD700;
+      background: linear-gradient(135deg, #fff8e1, #fff3cd);
+      color: #444;
+    }
+    .transfer-section.confirmed {
+      color: #333 !important;
+      border-color: #28a745;
+      background: linear-gradient(135deg, #eaffea, #d4f7d4);
+      color: #fff;
+    }
+    .transfer-section h2 {
+      margin: 0 0 10px;
+      font-size: 1.4em;
+      color: inherit;
+      text-align: center;
+      border-bottom: 2px solid #ccc;
+      padding-bottom: 5px;
+    }
+
+    /* Ручной ввод */
+    .manual-input {
+      display: none;
+      margin-top: 10px;
+      text-align: center;
+    }
+    .manual-input input {
+      padding: 8px;
+      font-size: 1em;
+      border: 2px solid #ff3c00;
+      border-radius: 4px;
+      width: 60%;
+      margin-bottom: 5px;
+    }
+    .manual-input button {
+      padding: 8px 15px;
+      font-size: 1em;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 0 5px;
+      background: linear-gradient(135deg, #FF3366, #FF7733);
+      color: #fff;
+      transition: background 0.3s;
+    }
+    .manual-input button:hover {
+      background: linear-gradient(135deg, #FF2255, #FF6633);
+    }
+    /* Информационные блоки */
+    .info-block {
+      text-align: center;
+      margin-bottom: 10px;
+      font-size: 1em;
+      font-weight: bold;
+      color: inherit;
+    }
+    .cell-highlight {
+      display: block;
+      font-size: 2em;
+      font-weight: bold;
+      padding: 10px 20px;
+      background-color: #ff3c00;
+      color: #fff;
+      border-radius: 8px;
+      margin: 5px auto;
+      transition: background-color 0.3s;
+    }
+    .confirmed-cell {
+      background-color: #28a745 !important;
+    }
+    .status-text {
+      text-align: center;
+      font-size: 1.1em;
+      color: #888;
+      margin-top: 5px;
+    }
+    /* Карточки для информации (Артикул, Ра/Ро, Штук) */
+    .info-cards {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .info-card {
+      background: #ff3c00;
+      color: #fff;
+      border-radius: 8px;
+      width: 100px;
+      height: 60px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1em;
+      transition: background 0.3s;
+    }
+    .info-card:hover {
+      background: #ff5722;
+    }
+    .card-label {
+      font-size: 0.7em;
+      opacity: 0.9;
+    }
+    .card-value {
+      font-size: 1.1em;
+      font-weight: bold;
+      margin-top: 3px;
+    }
+    /* Блок "Количество" */
+    .quantity-block {
+      text-align: center;
+      margin-top: 15px;
+      position: relative;
+    }
+    .quantity-block input[type="number"] {
+      width: 100px;
+      padding: 10px;
+      font-size: 1.3em;
+      border: 2px solid #ccc;
+      border-radius: 6px;
+      margin-right: 10px;
+      transition: border-color 0.3s;
+    }
+    .quantity-block input[type="number"]:focus {
+      border-color: #ff3c00;
+      outline: none;
+    }
+    .quantity-block .btn {
+      padding: 10px 20px;
+      font-size: 1.3em;
+      background: linear-gradient(135deg, #FF3366, #FF7733);
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      transition: background 0.3s, transform 0.2s;
+    }
+    .quantity-block .btn:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+    .quantity-block .btn:hover:not(:disabled) {
+      background: linear-gradient(135deg, #FF2255, #FF6633);
+      transform: translateY(-2px);
+    }
+    .back-btn-qty {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      width: 40px;
+      height: 40px;
+      border: none;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #ff6a00, #ee0979);
+      color: #fff;
+      font-size: 1.8em;
+      cursor: pointer;
+      outline: none;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+      transition: background 0.3s, transform 0.2s;
+    }
+    .back-btn-qty:hover {
+      background: linear-gradient(135deg, #e05500, #d80a70);
+      transform: scale(1.05);
+    }
+    /* Нижний блок кнопок */
+    .bottom-buttons {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 20px;
+      gap: 20px;
+    }
+    .back-btn, .skip-btn {
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 1.1em;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.3s;
+      flex: 1;
+      text-align: center;
+    }
+    .back-btn {
+      background: #333;
+      color: #fff;
+    }
+    .back-btn:hover {
+      background: #555;
+    }
+    .skip-btn {
+      background: #007bff;
+      color: #fff;
+      border: none;
+    }
+    .skip-btn:hover {
+      background: #0056b3;
+    }
+
+    /* 1) Общий стиль для кнопок внутри секций */
+.transfer-section .section-info,
+.transfer-section .edit-btn {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #ff3c00, #ff7733);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2em;
+  cursor: pointer;
+  transition: transform .2s, background .2s;
+  z-index: 10;
+}
+/* info слева, edit справа */
+.transfer-section .section-info {
+  top: 8px;
+  left: 8px;
+}
+.transfer-section .edit-btn {
+  top: 8px;
+  right: 8px;
+}
+/* hover‑эффект */
+.transfer-section .section-info:hover,
+.transfer-section .edit-btn:hover {
+  transform: scale(1.1);
+  background: linear-gradient(135deg, #e04400, #ff5733);
+}
+
+/* 2) Красивый, лёгкий popup‑блок */
+.section-popup {
+  display: none;
+  position: absolute;
+  border: 1.5px solid #ff3c00;
+  top: 42px;        /* под 32px‑кнопкой + 8px отступ */
+  left: 8px;        /* совпадает с левым отступом кнопки ❔ */
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.1);
+  padding: 12px;
+  z-index: 20;
+  min-width: 200px;
+}
+
+/* Таблица внутри pop‑up, зебра‑шаблон, читаемость */
+.section-popup table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+.section-popup th,
+.section-popup td {
+  padding: 8px 10px;
+  text-align: left;
+}
+.section-popup th {
+  background: #ff3c00;
+  color: #fff;
+  font-weight: 600;
+  border-bottom: 2px solid #e0e0e0;
+}
+.section-popup tr:nth-child(odd) {
+  background: #f9f9f9;
+}
+.section-popup tr:nth-child(even) {
+  background: #fff;
+}
+.filter-btn {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 42px;
+  height: 42px;
+  background: linear-gradient(135deg,#ff3c00,#ff7733);
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  z-index: 10;
+}
+.filter-btn svg {
+  width: 22px;
+  height: 22px;
+  fill: #fff;
+}
+.filter-menu {
+  display: none;
+  position: absolute;
+  top: 60px;
+  left: 10px;
+  background: #fff;
+  border: 2px solid #ff3c00;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.2);
+  z-index: 99;
+  padding: 8px 0;
+  min-width: 240px;
+}
+.filter-option {
+  padding: 12px 16px;
+  font-size: 1rem;
+  color: #333;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.filter-option:hover {
+  background: #ffe0d3;
+}
+.filter-choice {
+    display: block;
+    background: linear-gradient(135deg, #ff3c00, #ff7733);
+    color: #fff;
+    font-weight: 600;
+    text-align: center;
+    text-decoration: none;
+    border-radius: 10px;
+    padding: 12px;
+    margin: 6px 0;
+    transition: background 0.3s, transform 0.2s;
+  }
+  .filter-choice:hover {
+    background: linear-gradient(135deg, #e04400, #ff5733);
+    transform: scale(1.05);
+  }
+  
+  .circle-back {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #ff3c00, #ff7733);
+  color: #fff;
+  font-size: 1.2em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.transfer-section.quantity-block.grayed {
+  opacity: 0.5;
+  pointer-events: none;
+}
+/* Кнопка «Назад» остаётся активной */
+.transfer-section.quantity-block.grayed .circle-back {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+  </style>
+</head>
+<body>
+  <div class="transfer-container">
+    <!-- Верхняя информация и кнопка info -->
+    <div class="header-info">
+      <div class="static-header">
+        Перенос<br>товара
+      </div>
+      <div class="remaining-tasks">
+        Осталось: {{ task.remaining_tasks }} задач
+      </div>
+    </div>
+    <button class="info-icon" id="infoIcon" title="Информация">ℹ︎</button>
+
+        <!-- 1) Кнопка фильтра -->
+        <button id="filterBtn" class="filter-btn" title="Фильтр">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M3 5h18v2H3zm4 6h10v2H7zm2 6h6v2H9z"/>
+          </svg>
+        </button>
+        <div id="filterMenu" class="filter-menu" style="padding: 12px;">
+            <a href="?mode=default" class="filter-choice">📦 Умный</a>
+            <a href="?mode=articul" class="filter-choice">🔤 Артикулы</a>
+          </div>
+
+
+    <div class="info-popup" id="infoPopup">
+      <button class="close-popup" id="closeInfoBtn">×</button>
+      <h3>Информация</h3>
+      <p><strong>Складская задача:</strong> {{ task.task_number }}</p>
+      <p><strong>Документ:</strong> {% if task.id_deliveries is defined %}{{ task.id_deliveries }}{% endif %}</p>
+      <p><strong>Номер заказа:</strong> {{ task.id_orders }}</p>
+    </div>
+    
+    <!-- Информация о товаре -->
+    <div class="product-info">
+      <span>{% if task.types %}{{ task.types }}{% else %}Название товара{% endif %}</span>
+      <span>({{ task.gender }} / {{ task.model }} / {{ task.color }})</span>
+    </div>
+    
+    <!-- Секция "Откуда" -->
+    <div class="transfer-section source-section active" id="sourceSection">
+      <button class="section-info" data-target="popup-source">❔</button>
+      <div id="popup-source" class="section-popup">
+        <table>
+          <tr><th>Артикул</th>   <td>{{ task.articul }}</td></tr>
+          <tr><th>Размер</th>    <td>{{ task.sizes }}</td></tr>
+          <tr><th>Рост</th>      <td>{{ task.heights }}</td></tr>
+          <tr><th>Рост в см</th> <td>{{ task.heightsrus }}</td></tr>
+          <tr><th>Тип</th>       <td>{{ task.types }}</td></tr>
+          <tr><th>Модель</th>    <td>{{ task.model }}</td></tr>
+          <tr><th>Пол</th>       <td>{{ task.gender }}</td></tr>
+          <tr><th>Цвет</th>      <td>{{ task.color }}</td></tr>
+        </table>
+      </div>
+      <h2>Откуда
+        <button class="edit-btn" id="editSourceBtn" title="Редактировать">✎</button>
+      </h2>
+      <div class="info-block">
+        <span class="label">Ячейка:</span>
+        <strong id="sourceCell" class="cell-highlight">{{ task.from_cell }}</strong>
+      </div>
+      <div id="manualSourceInput" class="manual-input">
+        <input type="text" id="sourceInputField" placeholder="Введите ячейку">
+        <button id="saveSourceBtn">Сохранить</button>
+        <button id="cancelSourceBtn" style="background: #aaa;">Отмена</button>
+      </div>
+      <div class="info-cards">
+        <div class="info-card" id="articulCard">
+          <div class="card-label">Артикул</div>
+          <div class="card-value" id="article">{{ task.articul }}</div>
+        </div>
+        <div class="info-card" id="sizeCard">
+          <div class="card-label">Ра/Ро</div>
+          <div class="card-value" id="sizeHeight">{{ task.hs }}</div>
+        </div>
+        <div class="info-card" id="countCard">
+          <div class="card-label">Штук</div>
+          <div class="card-value" id="plannedQuantityValue">{{ task.counts }}</div>
+        </div>
+      </div>
+      <p id="sourceStatus" class="status-text"></p>
+    </div>
+    
+    <!-- Секция "Количество" -->
+    <!-- Секция "Количество" (автоматический счётчик) -->
+    <div class="transfer-section quantity-block" id="quantitySection" style="display: none; position: relative;">
+      <!-- Круглая кнопка «Назад» -->
+      <button id="backToScan" class="circle-back" title="Назад">
+        ⟵
+      </button>
+    
+      <h2>Количество</h2>
+      <p class="status-text">
+        Отсканировано: 
+        <strong id="scannedCount">0</strong>
+        из 
+        <strong id="plannedCount">{{ task.counts }}</strong>
+      </p>
+    
+      <!-- Кнопка «Готово» -->
+      <button id="finishScan" class="btn finish-scan" style="display: none;">
+        Готово
+      </button>
+    </div>
+
+    
+    <!-- Секция "Куда" -->
+    <div class="transfer-section target-section" id="targetSection">
+        <button class="section-info" data-target="popup-target">❔</button>
+        <div id="popup-target" class="section-popup">
+        <table>
+          <tr><th>Артикул</th>   <td>{{ task.articul }}</td></tr>
+          <tr><th>Размер</th>    <td>{{ task.sizes }}</td></tr>
+          <tr><th>Рост</th>      <td>{{ task.heights }}</td></tr>
+          <tr><th>Рост в см</th> <td>{{ task.heightsrus }}</td></tr>
+          <tr><th>Тип</th>       <td>{{ task.types }}</td></tr>
+          <tr><th>Модель</th>    <td>{{ task.model }}</td></tr>
+          <tr><th>Пол</th>       <td>{{ task.gender }}</td></tr>
+          <tr><th>Цвет</th>      <td>{{ task.color }}</td></tr>
+        </table>
+      </div>
+      <h2>Куда
+        <button class="edit-btn" id="editTargetBtn" title="Редактировать">✎</button>
+      </h2>
+      <div class="info-block">
+        <span class="label">Ячейка:</span>
+        <strong id="targetCell" class="cell-highlight">{% if task.target_cell %}{{ task.target_cell }}{% else %}?{% endif %}</strong>
+      </div>
+      <div id="manualTargetInput" class="manual-input">
+        <input type="text" id="targetInputField" placeholder="Введите ячейку">
+        <button id="saveTargetBtn">Сохранить</button>
+        <button id="cancelTargetBtn" style="background: #aaa;">Отмена</button>
+      </div>
+      <p id="targetStatus" class="status-text">Ожидание сканирования целевой ячейки...</p>
+    </div>
+    
+    <!-- Нижний блок кнопок -->
+    <div class="bottom-buttons">
+      <a class="skip-btn" id="skipBtn"
+      href="/transfer?skip={{ task.task_number }}&mode={{ request.args.get('mode', 'default') }}">
+      Пропустить
+      </a>
+      <a href="{{ url_for('queues') }}" class="back-btn">Вернуться</a>
+    </div>
+  </div>
+  
+  <script>
+    
+    let taskState = {
+      sourceScanned: false,
+      quantityConfirmed: false,
+      targetScanned: false,
+      plannedQuantity: parseInt(document.getElementById('plannedQuantityValue').textContent) || 0
+    };
+
+    const sourceStatusEl = document.getElementById('sourceStatus');
+    const targetStatusEl = document.getElementById('targetStatus');
+    const quantitySection = document.getElementById('quantitySection');
+    const quantityInput   = quantitySection.querySelector('input[type="number"]');
+    const confirmQtyBtn   = quantitySection.querySelector('.btn');          // кнопка «Готово» в ручном режиме
+    const backQtyBtn      = document.getElementById('backToScan');
+    const skipBtn = document.getElementById('skipBtn');
+    const TASK_ID = parseInt("{{ task.task_number }}", 10);
+    // Info popup
+    const infoIcon = document.getElementById('infoIcon');
+    const infoPopup = document.getElementById('infoPopup');
+    const closeInfoBtn = document.getElementById('closeInfoBtn');
+    infoIcon.addEventListener("click", function(e) {
+      e.stopPropagation();
+      infoPopup.style.display = (infoPopup.style.display === "block") ? "none" : "block";
+    });
+    if(closeInfoBtn){
+      closeInfoBtn.addEventListener("click", function(){
+        infoPopup.style.display = "none";
+      });
+    }
+    
+    // Ручное редактирование для "Откуда"
+    const editSourceBtn = document.getElementById('editSourceBtn');
+    const manualSourceInput = document.getElementById('manualSourceInput');
+    const sourceInputField = document.getElementById('sourceInputField');
+    const saveSourceBtn = document.getElementById('saveSourceBtn');
+    const cancelSourceBtn = document.getElementById('cancelSourceBtn');
+
+    editSourceBtn.addEventListener("click", function(e) {
+      e.stopPropagation();
+      if (manualSourceInput.style.display === "none" || manualSourceInput.style.display === "") {
+        manualSourceInput.style.display = "block";
+        sourceInputField.value = "";
+        sourceInputField.focus();
+        editSourceBtn.classList.add("active");
+      } else {
+        manualSourceInput.style.display = "none";
+        editSourceBtn.classList.remove("active");
+      }
+    });
+
+    saveSourceBtn.addEventListener("click", function() {
+      let manualValue = sourceInputField.value.trim();
+      if(manualValue) {
+        // Если введено неверно, вызываем ошибку и не меняем значение
+        let expected = document.getElementById('sourceCell').textContent.trim();
+        if(manualValue !== expected) {
+          sourceStatusEl.textContent = "Неверный номер ячейки!";
+          sourceStatusEl.style.color = "red";
+          setTimeout(() => { sourceStatusEl.textContent = ""; }, 2000);
+          return;
+        }
+        manualSourceInput.style.display = "none";
+        editSourceBtn.classList.remove("active");
+        processSourceScan(manualValue);
+      }
+    });
+
+    cancelSourceBtn.addEventListener("click", function() {
+      manualSourceInput.style.display = "none";
+      editSourceBtn.classList.remove("active");
+    });
+
+    // Ручное редактирование для "Куда"
+    const editTargetBtn = document.getElementById('editTargetBtn');
+    const manualTargetInput = document.getElementById('manualTargetInput');
+    const targetInputField = document.getElementById('targetInputField');
+    const saveTargetBtn = document.getElementById('saveTargetBtn');
+    const cancelTargetBtn = document.getElementById('cancelTargetBtn');
+
+    editTargetBtn.addEventListener("click", function(e) {
+      e.stopPropagation();
+      if (manualTargetInput.style.display === "none" || manualTargetInput.style.display === "") {
+        manualTargetInput.style.display = "block";
+        targetInputField.value = "";
+        targetInputField.focus();
+        editTargetBtn.classList.add("active");
+      } else {
+        manualTargetInput.style.display = "none";
+        editTargetBtn.classList.remove("active");
+      }
+    });
+
+    saveTargetBtn.addEventListener("click", function() {
+      let manualValue = targetInputField.value.trim();
+      if(manualValue) {
+        let expected = document.getElementById('targetCell').textContent.trim();
+        if(expected !== '?' && manualValue !== expected) {
+          targetStatusEl.textContent = "Неверный номер ячейки!";
+          targetStatusEl.style.color = "red";
+          setTimeout(() => { 
+            targetStatusEl.textContent = "Ожидание сканирования целевой ячейки...";
+            targetStatusEl.style.color = "#888";
+          }, 2000);
+          return;
+        }
+        manualTargetInput.style.display = "none";
+        editTargetBtn.classList.remove("active");
+        processTargetScan(manualValue);
+      }
+    });
+
+    cancelTargetBtn.addEventListener("click", function() {
+      manualTargetInput.style.display = "none";
+      editTargetBtn.classList.remove("active");
+    });
+
+    // Кнопка "Пропустить" - переходит к следующей задаче
+    skipBtn.addEventListener("click", function() {
+      window.location.href = "/transfer";
+    });
+
+    // Эмуляция сканирования через сканер штрих-кодов
+    // Эмуляция сканирования через сканер штрих-кодов
+    // Вставьте этот блок целиком в <script> вашего transfer.html, заменив текущую функцию window.onBarcodeScanned
+      window.onBarcodeScanned = function(scannedCode) {
+      scannedCode = scannedCode.trim();
+      const qtySec    = document.getElementById('quantitySection');
+      const scCountEl = document.getElementById('scannedCount');
+      const finishBtn = document.getElementById('finishScan');
+      const backBtn   = document.getElementById('backToScan');
+
+      // 1) Подтверждение «Откуда»
+      if (!taskState.sourceScanned) {
+        processSourceScan(scannedCode);
+        return;
+      }
+
+      // 2) Скан товара (секция “Количество”)
+      if (taskState.sourceScanned && !taskState.quantityConfirmed) {
+        // блокируем дубли и переполнение
+        taskState.scannedCodes = taskState.scannedCodes || new Set();
+        if (taskState.scannedCodes.has(scannedCode)) {
+          return Swal.fire({ title: 'Этот товар уже отсканирован', icon: 'error' });
+        }
+        if (taskState.scannedCount >= taskState.plannedQuantity) {
+          return Swal.fire({ title: 'Максимальное количество достигнуто', icon: 'warning' });
+        }
+
+        // подсветка секции «Количество»
+        qtySec.classList.add('active');
+
+        // отправляем на сервер
+        fetch('/transfer/scan_item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: scannedCode, task_id: TASK_ID })
+        })
+        .then(r => r.json())
+        .then(data => {
+          if (data.status === 'success') {
+            // обновляем счётчик
+            taskState.scannedCount = data.scanned_count;
+            taskState.scannedCodes.add(scannedCode);
+            scCountEl.textContent = taskState.scannedCount;
+
+            // показываем кнопки
+            finishBtn.style.display = 'inline-block';
+            backBtn.style.display   = 'inline-block';
+
+            // автозавершение при достижении лимита
+            if (taskState.scannedCount >= taskState.plannedQuantity) {
+              finishBtn.click();
+            }
+          } else {
+            Swal.fire({ title: data.message, icon: 'error' });
+          }
+        })
+        .catch(err => Swal.fire({ title: 'Сетевая ошибка', text: err.message, icon: 'error' }));
+
+        return;
+      }
+
+      // 3) Скан «Куда»
+      if (taskState.quantityConfirmed && !taskState.targetScanned) {
+        processTargetScan(scannedCode);
+        return;
+      }
+      
+        // 3) Сканирование целевой ячейки (секция «Куда»)
+        if (taskState.quantityConfirmed && !taskState.targetScanned) {
+          processTargetScan(scannedCode);
+          return;
+        }
+      };
+      
+    
+
+    function processSourceScan(scannedCode) {
+  fetch('/transfer/validate_source', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({cell_code: scannedCode, task_id: TASK_ID})
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.status === 'success') {
+      // ВАЖНО: сначала ставим флаг
+      taskState.sourceScanned = true;
+
+      // Дальше ваш UI‑код
+      document.getElementById('sourceSection').classList.add('confirmed');
+      document.getElementById('sourceCell').classList.add('confirmed-cell');
+      quantitySection.style.display = 'block';
+    } else {
+      sourceStatusEl.textContent = data.message;
+      sourceStatusEl.style.color = 'red';
+      setTimeout(() => sourceStatusEl.textContent = '', 2000);
+    }
+  });
+}
+
+
+  function processTargetScan(scannedCode) {
+    fetch('/transfer/validate_target', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({cell_code: scannedCode, task_id: TASK_ID})
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.status === 'success') {
+        // --- здесь ваш существующий код успешного скана «Куда» ---
+        document.getElementById('targetSection').classList.add('confirmed');
+        document.getElementById('targetCell').classList.add('confirmed-cell');
+        targetStatusEl.textContent = 'Ячейка подтверждена';
+        targetStatusEl.style.color = 'green';
+        setTimeout(() => window.location.href = '/transfer', 1500);
+      } else {
+        targetStatusEl.textContent = data.message;
+        targetStatusEl.style.color = 'red';
+        setTimeout(() => {
+          targetStatusEl.textContent = 'Ожидание сканирования целевой ячейки...';
+          targetStatusEl.style.color = '#888';
+        }, 2000);
+      }
+    });
+  }
+
+
+  confirmQtyBtn.addEventListener('click', function() {
+    const qty = parseInt(quantityInput.value, 10);
+    if (qty === taskState.plannedQuantity) {
+      // полное количество
+      taskState.quantityConfirmed = true;
+      quantitySection.classList.add('confirmed');
+      quantityInput.disabled = true;
+      confirmQtyBtn.disabled = true;
+    } else if (qty < taskState.plannedQuantity) {
+      // меньше, чем нужно — показываем предупреждение
+      Swal.fire({
+        title: 'Вы уверены?',
+        text: 'Введено меньше требуемого количества. Продолжить?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Да, продолжить',
+        cancelButtonText: 'Отмена'
+      }).then(result => {
+        if (result.isConfirmed) {
+          taskState.quantityConfirmed = true;
+          // поменять оформление карточки «Штук»
+          const countCard = document.getElementById('countCard');
+          countCard.style.background = 'maroon';
+          countCard.querySelector('.card-value').textContent = qty + ' !';
+          quantitySection.classList.add('confirmed');
+          quantityInput.disabled = true;
+          confirmQtyBtn.disabled = true;
+        }
+      });
+    } else {
+      // введено больше, чем планировалось
+      Swal.fire({
+        icon: 'error',
+        title: 'Ошибка',
+        text: 'Введите корректное количество товара!'
+      });
+    }
+  });
+
+   backQtyBtn.addEventListener("click", function() {
+      // Возвращаем блок "Количество" в исходное состояние
+      quantityInput.value = "";
+      document.getElementById('quantitySection').classList.remove("confirmed");
+      quantityInput.disabled = false;
+      confirmQtyBtn.disabled = false;
+      // Возвращаем карточку "Штук" в исходный градиент
+      let countCard = document.getElementById('countCard');
+      countCard.style.background = "#ff3c00";
+      countCard.querySelector('.card-value').textContent = "{{ task.counts }}";
+    }); 
+    // открываем/закрываем section-popup при клике на section-info
+    document.querySelectorAll('.section-info').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const popup = document.getElementById(btn.dataset.target);
+        popup.style.display = (popup.style.display === 'block') ? 'none' : 'block';
+      });
+    });
+    // закрываем попап по клику в любом другом месте
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.section-popup')
+        .forEach(p => p.style.display = 'none');
+    });
+    const filterBtn = document.getElementById("filterBtn");
+    const filterMenu = document.getElementById("filterMenu");
+
+    filterBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      filterMenu.style.display = filterMenu.style.display === "block" ? "none" : "block";
+    });
+
+    document.addEventListener("click", () => {
+      filterMenu.style.display = "none";
+    });
+    
+
+  // Кнопка «Назад» — возвращает к сканированию товаров
+  document.getElementById('backToScan').addEventListener('click', () => {
+    taskState.quantityConfirmed = false;
+    // убираем подсветку, возвращаем интерактивность
+    const qtySec = document.getElementById('quantitySection');
+    qtySec.classList.remove('confirmed', 'active', 'grayed');
+    document.getElementById('finishScan').style.display = 'none';
+  });
+
+  // Кнопка «Готово» — переходим к блоку «Куда»
+  document.getElementById('finishScan').addEventListener('click', () => {
+    taskState.quantityConfirmed = true;
+    const qtySec = document.getElementById('quantitySection');
+    qtySec.classList.add('grayed');        // делаем серым весь блок (кроме кнопки «Назад»)
+    qtySec.classList.remove('active');     // убираем желтую подсветку
+    qtySec.classList.add('confirmed');
+    // подсветка блока «Куда»
+    document.getElementById('targetSection').classList.add('active');
+  });
+
+
+  </script>
+</body>
+</html>

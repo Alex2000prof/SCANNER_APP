@@ -1,0 +1,85 @@
+{% extends 'layout.html' %}
+{% block title %}Приёмка{% endblock %}
+{% block content %}
+
+<h2>Приёмка (сканируйте честный знак)</h2>
+
+<label>Номер поставки:</label>
+<input type="text" id="deliveryIdInput" placeholder="Например: 1702">
+
+<label>Номер коробки:</label>
+<input type="text" id="boxNumInput" placeholder="Например: 9999">
+
+<!-- Поле ввода, если хотим ручной ввод -->
+<input type="text" id="codeInput" placeholder="Сканируйте ЧЗ..." autofocus>
+
+<script>
+  const successSound = new Audio('{{ url_for("static", filename="audio/success.mp3") }}');
+  const errorSound   = new Audio('{{ url_for("static", filename="audio/fail.mp3") }}');
+
+  const deliveryIdInput = document.getElementById('deliveryIdInput');
+  const boxNumInput     = document.getElementById('boxNumInput');
+  const codeInput       = document.getElementById('codeInput');
+
+  document.addEventListener('DOMContentLoaded', () => {
+    codeInput.focus();
+  });
+
+  // (Можно оставить paste/keydown, если хотим ручной ввод)
+  codeInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      const code = codeInput.value.trim();
+      if (code) submitCode(code);
+    }
+  });
+
+  // (Главная функция для AJAX)
+  function submitCode(code) {
+    const deliveryId = deliveryIdInput.value.trim();
+    const boxNum     = boxNumInput.value.trim();
+
+    fetch('/priemka/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: code,
+        delivery_id: deliveryId,
+        box_num: boxNum
+      })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.status === 'success') {
+        successSound.play();
+        codeInput.value = '';
+        codeInput.focus();
+      } else {
+        errorSound.play();
+        Swal.fire('Ошибка', data.message, 'error')
+          .then(() => codeInput.focus());
+        codeInput.value = '';
+      }
+    })
+    .catch(err => {
+      errorSound.play();
+      Swal.fire('Ошибка', String(err), 'error')
+        .then(() => codeInput.focus());
+      codeInput.value = '';
+    });
+  }
+
+  window.onBarcodeScanned = function(scannedCode) {
+    console.log("Сканирован код на priemka:", scannedCode);
+    const codeInput = document.getElementById('codeInput');
+    codeInput.value = scannedCode;
+    // Можно сразу вызвать отправку через AJAX, например:
+    submitCode(scannedCode);
+  };
+</script>
+
+<a href="/main" class="back-button">Главное меню</a>
+{% endblock %}
+
+
+
+

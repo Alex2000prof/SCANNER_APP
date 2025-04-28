@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+      "*.html": "jinja-html",
+      "*.jinja": "jinja"
+    },
+    "css.validate": false,
+    "scss.validate": false,
+    "less.validate": false
+  }
+  

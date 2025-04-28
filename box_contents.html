@@ -1,0 +1,42 @@
+{% extends 'layout.html' %}
+{% block title %}Содержимое коробки{% endblock %}
+{% block content %}
+
+<h2>Содержимое коробки №{{ num_case }}</h2>
+
+{% if items and items|length > 0 %}
+  <ul class="items-list compact-list">
+    {% for it in items %}
+    <li class="{% if it.Scanned %}scanned-item{% endif %}">
+      <div class="item-row">
+        <span class="item-number">{{ loop.index }}.</span>
+        <span class="item-uniq">[{{ it.Uniq }}]</span>
+        <span class="item-articul">{{ it.Articul }}</span>
+        <span class="item-sizeheight">{{ it.SizeHeight }}</span>
+        <span class="item-model">{{ it.Models }}</span>
+        <span class="item-color">{{ it.Color }}</span>
+        <span class="item-types">{{ it.Types }}</span>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>В этой коробке пока нет отсканированных товаров.</p>
+{% endif %}
+
+<a href="{{ url_for('scan_box', box_id=box_id) }}" class="back-button">
+  Назад к сканированию
+</a>
+<script>
+  if (typeof window.onBarcodeScanned !== 'function') {
+    window.onBarcodeScanned = function(scannedCode) {
+      console.log("Получен broadcast:", scannedCode);
+      // Здесь можно вызвать нужную функцию для обработки сканированного кода
+    };
+  }
+</script>
+
+{% endblock %}
+
+
+

@@ -1,0 +1,63 @@
+{% extends 'layout.html' %}
+{% block title %}Авторизация{% endblock %}
+{% block content %}
+<h2>Авторизация</h2>
+<form id="loginForm" method="POST" action="/login">
+  <label>Штрихкод бейджика:</label>
+  <input type="text" name="password" id="passwordInput" required autofocus>
+  <!-- Кнопка скрыта, так как форма отправляется автоматически -->
+  <button type="submit" style="display:none;">Войти</button>
+</form>
+
+<script>
+  // Функция для обработки полученного штрихкода типа Code-128
+  window.onBarcodeScanned = function(scannedCode) {
+    console.log("Получен штрихкод Code-128:", scannedCode);
+    const passwordInput = document.getElementById('passwordInput');
+    passwordInput.value = scannedCode; // заполняем поле полученным кодом
+    document.getElementById('loginForm').submit(); // отправляем форму
+  };
+
+  // Дополнительный код для автофокуса и обработки paste/blur (если требуется)
+  const loginForm = document.getElementById('loginForm');
+  const passwordInput = document.getElementById('passwordInput');
+
+  passwordInput.addEventListener('paste', function() {
+    setTimeout(() => {
+      if (passwordInput.value.trim() !== '') {
+        loginForm.submit();
+      }
+    }, 100);
+  });
+
+  passwordInput.addEventListener('change', function() {
+    if (passwordInput.value.trim() !== '') {
+      loginForm.submit();
+    }
+  });
+
+  passwordInput.addEventListener('blur', () => {
+    setTimeout(() => {
+      passwordInput.focus();
+    }, 200);
+  });
+</script>
+{% if error %}
+<script>
+Swal.fire({
+  title: 'Ошибка авторизации',
+  text: '{{ error }}',
+  icon: 'error',
+  confirmButtonText: 'OK'
+});
+</script>
+{% endif %}
+{% endblock %}
+
+
+
+
+
+
+
+  

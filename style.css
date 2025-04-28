@@ -1,0 +1,431 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap');
+
+/* Анимация fadeIn */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Сброс и базовый стиль */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+main {
+  flex: 1;
+}
+
+html {
+  font-size: 16px;
+  font-family: 'Montserrat', sans-serif;
+  background: linear-gradient(120deg, #ffffff, #fff3ec);
+  color: #333;
+  line-height: 1.4;
+}
+
+@media (max-width: 600px) {
+  html {
+    font-size: 18px; /* Чуть крупнее на узких экранах */
+  }
+}
+
+body {
+  margin: 0;
+  padding: 0;
+}
+
+/* ---------- Шапка ---------- */
+header {
+  background: linear-gradient(45deg, #ff4c00, #ff8c33);
+  color: #fff;
+  padding: 15px;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.2);
+  position: relative;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* Заголовок слева, ссылки справа */
+}
+
+header .header-content {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+header h1 {
+  font-size: 1.8em;
+  margin: 0;
+  letter-spacing: 1px;
+  font-weight: 700;
+}
+
+/* Блок навигации */
+.main-nav {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
+
+
+/* Кнопки внутри main-nav */
+.main-nav a {
+  display: inline-block;
+  background: #fff;
+  color: #ff3c00;
+  padding: 6px 12px;
+  font-size: 0.9em;
+  border-radius: 4px;
+  text-decoration: none;
+  font-weight: bold;
+  transition: background 0.3s, color 0.3s, transform 0.2s;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  white-space: nowrap;
+}
+
+.main-nav a:hover {
+  background: #ff3c00;
+  color: #fff;
+  transform: translateY(-2px);
+}
+
+/* ---------- Основная часть ---------- */
+main {
+  padding: 16px;
+  max-width: 650px;
+  margin: 0 auto;
+  animation: fadeIn 0.4s ease;
+}
+
+h2 {
+  font-size: 1.5em;
+  margin-bottom: 12px;
+  color: #ff3c00;
+  font-weight: 700;
+  text-shadow: 1px 1px 2px rgba(255,80,0,0.3);
+}
+
+p {
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+/* Формы и поля ввода */
+form {
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+label {
+  font-weight: bold;
+  margin-bottom: 4px;
+  color: #444;
+}
+
+input[type="text"],
+input[type="password"] {
+  width: 100%;
+  padding: 12px;
+  font-size: 1em;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  outline: none;
+  transition: border 0.2s, box-shadow 0.2s;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus {
+  border-color: #ff3c00;
+  box-shadow: 0 0 5px rgba(255,60,0,0.3);
+}
+
+/* ---------- Кнопки ---------- */
+button,
+.scan-link,
+.back-button {
+  display: inline-block;
+  background: #ff3c00;
+  color: #fff;
+  padding: 12px 20px;
+  font-size: 1em;
+  text-decoration: none;
+  border: none;
+  border-radius: 6px;
+  margin: 6px 0;
+  cursor: pointer;
+  transition: background 0.3s ease, transform 0.2s ease, box-shadow 0.3s;
+  box-shadow: 0 4px 8px rgba(255,60,0,0.3);
+  font-weight: 600;
+}
+button:hover,
+.scan-link:hover,
+.back-button:hover {
+  background: #e03500;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(224,53,0,0.4);
+}
+
+/* ---------- Списки коробок/товаров ---------- */
+ul.box-list,
+ul.items-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  margin-bottom: 20px;
+}
+
+/* Коробки */
+ul.box-list li {
+  background: #fff;
+  padding: 14px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  border-left: 6px solid #ff3c00;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transition: transform 0.2s ease, border-color 0.2s;
+}
+ul.box-list li:hover {
+  transform: scale(1.02);
+}
+
+.box-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.box-title {
+  font-weight: bold;
+  font-size: 1.1em;
+  margin-bottom: 4px;
+  color: #444;
+}
+
+.box-count {
+  color: #ff3c00;
+  font-weight: bold;
+  font-size: 1.1em;
+  margin-top: 4px;
+}
+
+/* Полуотсканированные (жёлтые) */
+ul.box-list li.partial {
+  border-left-color: #ffca00 !important;
+}
+.partial .box-count {
+  color: #ffca00;
+}
+.partial .scan-link {
+  background-color: #ffca00;
+  color: #fff;
+}
+.partial .scan-link:hover {
+  background-color: #e0b000;
+}
+
+/* Полностью отсканированные (зелёные) */
+ul.box-list li.completed {
+  border-left-color: green !important;
+}
+.completed .box-count {
+  color: green;
+}
+.completed .scan-link {
+  background-color: green;
+  color: #fff;
+}
+
+/* ---------- Подвал ---------- */
+footer {
+  background: #f2f2f2;
+  color: #555;
+  text-align: center;
+  padding: 12px;
+  font-size: 0.9em;
+  margin-top: 30px;
+  box-shadow: 0 -2px 6px rgba(0,0,0,0.1);
+}
+
+/* Блок «Последний скан» */
+.last-scan-block {
+  margin: 15px 0;
+  padding: 12px;
+  background: #fffbe6;
+  border-left: 5px solid #ffd700;
+  border-radius: 6px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  animation: fadeIn 0.4s ease;
+}
+
+/* Компактный список товаров (box_contents) */
+ul.items-list.compact-list li {
+  margin-bottom: 8px;
+  padding: 8px;
+  font-size: 0.88em;
+  background: #fff;
+  border-left: 4px solid #ff3c00;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  transition: transform 0.2s ease;
+}
+ul.items-list.compact-list li:hover {
+  background: #fffdf6;
+  transform: scale(1.01);
+}
+
+.item-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.item-uniq {
+  font-weight: bold;
+  color: #ff3c00;
+}
+.item-sizeheight,
+.item-articul,
+.item-model,
+.item-color,
+.item-types {
+  color: #555;
+  font-style: normal;
+}
+
+/* Если товар отсканирован */
+.scanned-item {
+  border-left-color: green !important;
+  background: #eeffee;
+}
+.scanned-item .item-uniq {
+  color: green;
+  font-weight: bold;
+}
+
+/* Контейнер для блока перехода к другой поставке/коробке */
+.search-container {
+  background: #fff;
+  border: 1px solid #ff3c00;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Заголовок блока */
+.search-title {
+  font-size: 1.2em;
+  color: #ff3c00;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+/* Поле ввода для поиска */
+.search-input {
+  width: 100%;
+  padding: 10px;
+  font-size: 1em;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  outline: none;
+  transition: border 0.2s, box-shadow 0.2s;
+}
+
+.search-input:focus {
+  border-color: #ff3c00;
+  box-shadow: 0 0 5px rgba(255, 60, 0, 0.3);
+}
+
+/* Кнопка поиска */
+.search-btn {
+  width: 100%;
+  padding: 10px;
+  background: #ff3c00;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 1em;
+  cursor: pointer;
+  transition: background 0.3s ease, transform 0.2s ease;
+}
+
+.search-btn:hover {
+  background: #e03500;
+  transform: translateY(-2px);
+}
+
+  /* Контейнер для главного меню */
+.main-menu-container {
+  text-align: center;
+  padding: 30px 20px;
+}
+
+/* Заголовок главного меню */
+.main-menu-container h2 {
+  font-size: 2em;
+  margin-bottom: 30px;
+  color: #ff3c00;
+  text-shadow: 1px 1px 2px rgba(255, 60, 0, 0.3);
+}
+
+.menu-buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Способ 1: задать нижний отступ каждой кнопке, кроме последней */
+.menu-buttons a:not(:last-child) {
+  margin-bottom: 20px;
+}
+
+
+
+/* Кнопки главного меню */
+.menu-button {
+  display: inline-block;
+  width: 80%;
+  max-width: 300px;
+  padding: 15px 0;
+  background: #ff3c00;
+  color: #fff;
+  font-size: 1.2em;
+  font-weight: bold;
+  text-decoration: none;
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(255, 60, 0, 0.3);
+  transition: background 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease;
+}
+
+.menu-button:hover {
+  background: #e03500;
+  transform: translateY(-3px);
+  box-shadow: 0 6px 12px rgba(224, 53, 0, 0.4);
+}
+
+  
+  
+  

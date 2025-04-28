@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Информация о задании</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Подключение SweetAlert2 для модальных окон -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap');
+    /* Обнуляем отступы и растягиваем на весь экран */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      font-family: 'Montserrat', sans-serif;
+      background: #f5f7fa;
+      color: #333;
+    }
+    /* Единственная рамка на весь экран */
+    .summary-container {
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      overflow-x: hidden;
+      width: 100%;
+      height: 100%;
+      border: 3px solid #ff3c00;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      padding: 10px;
+      box-sizing: border-box;
+      position: relative;
+    }
+    /* Кнопка печати в правом верхнем углу */
+    .print-button {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 10;
+    }
+    .print-button a {
+      display: inline-block;
+      width: 50px;
+      height: 50px;
+      text-decoration: none;
+    }
+    .print-button svg {
+      width: 100%;
+      height: 100%;
+    }
+    /* Заголовок и путь */
+    .summary-header {
+      text-align: center;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #ccc;
+    }
+    .summary-header h1 {
+      font-size: 2em;
+      color: #ff3c00;
+      margin: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .global-route {
+      font-size: 1.2em;
+      color: #444;
+      font-weight: 600;
+      margin-top: 5px;
+    }
+    /* Блок с данными – таблица */
+    .assignment-info {
+      flex: 1;
+      overflow-y: auto;
+      margin: 20px auto;
+      padding: 20px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background: #fafafa;
+      font-size: 1.3em;
+      max-width: 600px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .assignment-info p {
+      margin: 15px 0;
+    }
+    .assignment-info span.label {
+      font-weight: 600;
+      color: #555;
+    }
+    /* Блок кнопок */
+    .buttons-block {
+      position: sticky;
+      bottom: 10px; /* или сколько вам отступ нужно */
+      background: #fff;  /* по необходимости совпадёт с фоном */
+      padding-top: 10px; /* немного пространства сверху */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
+      max-width: 600px;
+      width: 100%;
+      padding: 10px 0;
+    }
+    .btn-primary {
+      width: 100%;
+      padding: 15px 0;
+      font-size: 1.5em;
+      background: linear-gradient(135deg, #FF3366, #FF7733);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      text-align: center;
+      text-decoration: none;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      transition: background 0.3s, transform 0.2s;
+    }
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #FF2255, #FF6633);
+      transform: translateY(-2px);
+    }
+    .btn-secondary {
+      width: 80%;
+      padding: 10px 0;
+      font-size: 1.2em;
+      background: #333;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      text-align: center;
+      text-decoration: none;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      transition: background 0.3s, transform 0.2s;
+    }
+    .btn-secondary:hover {
+      background: #555;
+      transform: translateY(-2px);
+    }
+  </style>
+</head>
+<body>
+  <!-- Кнопка печати -->
+  <div class="print-button">
+    <a href="{{ url_for('print_document', id_deliveries=order.ID_Deliveries, queue=queue) }}" id="printBtn" title="Печать">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="#ff3c00" viewBox="0 0 24 24">
+        <path d="M19 8h-1V3H6v5H5c-1.103 0-2 .897-2 2v7h4v4h12v-4h4v-7c0-1.103-.897-2-2-2zm-3 11H8v-3h8v3zm3-5H4v-4h16v4z"/>
+      </svg>
+    </a>
+  </div>
+  
+  <div class="summary-container">
+    <div class="summary-header">
+      <h1>{{ order.Turn if order.Turn else queue }}</h1>
+      <div class="global-route">
+        {% if order.Outputs and order.Inputs %}
+          {{ order.Outputs }} → {{ order.Inputs }}
+        {% else %}
+          Склад → ?
+        {% endif %}
+      </div>
+    </div>
+    <div class="assignment-info">
+      <p>
+        <span class="label">Номер документа:</span>
+        {% if order.ID_Deliveries %}
+          {{ order.ID_Deliveries }}
+        {% else %}
+          Не указан
+        {% endif %}
+      </p>
+      <p>
+        <span class="label">Номер складского заказа:</span>
+        {% if order.ID %}
+          {{ order.ID }}
+        {% else %}
+          Не указан
+        {% endif %}
+      </p>
+      {% if order.Inputs and ("WB" in order.Inputs or "LM" in order.Inputs) and order.NumPostavki %}
+      <p>
+        <span class="label">Номер поставки:</span>
+        {{ order.NumPostavki }}
+      </p>
+      {% endif %}
+      <p>
+        <span class="label">Количество складских задач:</span>
+        {% if order.CountTask %}
+          {{ order.CountTask }} шт.
+        {% else %}
+          Не указано
+        {% endif %}
+      </p>
+    </div>
+    <div class="buttons-block">
+      <a href="{{ url_for('transfer') }}" class="btn-primary">Приступить к заданию</a>
+      <a href="{{ url_for('queues') }}" class="btn-secondary">Вернуться к очередям</a>
+    </div>
+  </div>
+  
+  <!-- Скрипт для обработки нажатия кнопки печати -->
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      const printBtn = document.getElementById('printBtn');
+      printBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        const url = printBtn.getAttribute('href');
+        fetch(url)
+          .then(response => response.text())
+          .then(result => {
+            Swal.fire({
+              icon: 'success',
+              title: 'Печать запущена',
+              text: result,
+              timer: 2000,
+              showConfirmButton: false
+            });
+          })
+          .catch(error => {
+            Swal.fire({
+              icon: 'error',
+              title: 'Ошибка печати',
+              text: error.toString(),
+              timer: 2000,
+              showConfirmButton: false
+            });
+          });
+      });
+    });
+  </script>
+</body>
+</html>

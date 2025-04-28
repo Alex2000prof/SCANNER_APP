@@ -1,0 +1,116 @@
+{% extends 'layout.html' %}
+{% block title %}Коробки{% endblock %}
+{% block content %}
+<h2>Поставка №{{ delivery_id }}</h2>
+
+<!-- Ваш текущий список коробок -->
+<p>Выберите коробку:</p>
+<ul class="box-list">
+  {% for box in boxes %}
+    {% set scanned = box.Scanned %}
+    {% set total = box.Total %}
+    {% if scanned >= total %}
+      {% set box_class = 'completed' %}
+    {% elif scanned == 0 %}
+      {% set box_class = '' %}
+    {% else %}
+      {% set box_class = 'partial' %}
+    {% endif %}
+
+    <li class="{{ box_class }}">
+      <div class="box-info">
+        <div class="box-title">Коробка №{{ box.NumCase }}</div>
+        <div class="box-count">{{ scanned }}/{{ total }} шт.</div>
+      </div>
+      <!-- Кнопка «Сканировать» -->
+      <a class="scan-link"
+         href="{{ url_for('scan_box', box_id=box.ID_Case) }}">
+        Сканировать
+      </a>
+    </li>
+  {% endfor %}
+</ul>
+
+<!-- Кнопка «Завершить» (возвращение на ввод поставки) -->
+<form method="POST" action="/finish">
+  <button type="submit">Вернуться в главное меню</button>
+</form>
+
+<hr>
+
+<!-- Новое поле ввода: если отсканировать:
+     - "1677" (без дефиса) => считаем «номер поставки», переходим на /boxes (другой)
+     - "01677-007" (с дефисом) => считаем InnerBarcode, переходим сразу в нужную коробку
+-->
+<!-- ... предыдущий контент страницы boxes.html ... -->
+
+<hr>
+
+<div class="search-container">
+  <h3 class="search-title">Перейти к другой поставке или коробке</h3>
+  <form id="boxesSearchForm" method="POST" action="/boxes/search">
+    <input
+      type="text"
+      id="boxesSearchInput"
+      name="boxes_search"
+      required
+      placeholder="Напр. 1677 или 01677-007"
+      class="search-input"
+    />
+    <button type="submit" class="btn search-btn">Поиск</button>
+  </form>
+</div>
+
+<script>
+  const boxesSearchForm  = document.getElementById('boxesSearchForm');
+  const boxesSearchInput = document.getElementById('boxesSearchInput');
+
+  // При загрузке страницы – фокус на поле ввода
+  document.addEventListener('DOMContentLoaded', () => {
+    boxesSearchInput.focus();
+  });
+
+  // Автосабмит при вставке текста (если сканер без Enter)
+  boxesSearchInput.addEventListener('paste', function(e) {
+    setTimeout(() => {
+      const code = boxesSearchInput.value.trim();
+      if (code) {
+        boxesSearchForm.submit();
+      }
+    }, 100);
+  });
+
+  // Фокус по нажатию F9
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'F9') {
+      e.preventDefault();
+      boxesSearchInput.focus();
+    }
+  });
+
+  // Если поле потеряло фокус – возвращаем фокус через 200мс
+  boxesSearchInput.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (document.activeElement !== boxesSearchInput) {
+        boxesSearchInput.focus();
+      }
+    }, 200);
+  });
+</script>
+
+<script>
+  window.onBarcodeScanned = function(scannedCode) {
+    console.log("Сканирован код на boxes:", scannedCode);
+    const boxesSearchInput = document.getElementById('boxesSearchInput');
+    boxesSearchInput.value = scannedCode;
+    document.getElementById('boxesSearchForm').submit();
+  };
+</script>
+
+
+{% endblock %}
+
+
+
+  
+    
