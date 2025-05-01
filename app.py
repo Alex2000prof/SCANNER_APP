@@ -11,7 +11,7 @@ from flask import (
 # ----- Настройка логирования -----
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+    level=logging.INFO  
 )
 logger = logging.getLogger(__name__)
 
@@ -1447,7 +1447,9 @@ def queues():
     return render_template('queues.html')
 
 @app.route('/queue/<string:turn>', methods=['GET'])
+
 def queue_turn(turn):
+    mode = request.args.get('mode')
     if 'who' not in session:
         return redirect(url_for('login'))
     
@@ -1458,8 +1460,14 @@ def queue_turn(turn):
     try:
         cursor = conn.cursor()
         # -- A. Вызываем вашу процедуру мониторинга очереди
-        sql = "EXEC [u1603085_Maxim].[pr2_Мониторинг_Очереди_Copy] @Turn = ?"
-        cursor.execute(sql, (turn,))
+        # -- A. Вызываем вашу процедуру мониторинга очереди
+        if mode == 'marketplace':
+            sql = "EXEC [u1603085_Maxim].[pr2_Мониторинг_Очереди_Copy] @Turn = ?, @Mode = ?"
+            cursor.execute(sql, (turn, mode))
+        else:
+            sql = "EXEC [u1603085_Maxim].[pr2_Мониторинг_Очереди_Copy] @Turn = ?"
+            cursor.execute(sql, (turn,))
+
         
         # Пропускаем промежуточные результаты, пока не найдём строку
         while True:
@@ -1637,6 +1645,41 @@ def serialize_dict(d):
             new_d[k] = v
     return new_d
 
+sector_neighbors = {
+    102: [103],
+    103: [102],
+    104: [105],
+    105: [104],
+    106: [107],
+    107: [106],
+    108: [109],
+    109: [108],
+    110: [111],
+    111: [110],
+    112: [113],
+    113: [112],
+    114: [115],
+    115: [114],
+    118: [119],
+    119: [118],
+    
+    201: [202],
+    202: [201],
+    203: [204],
+    204: [203],
+    205: [206],
+    206: [205],
+    207: [208],
+    208: [207],
+    209: [210],
+    210: [209],
+    211: [212],
+    212: [211],
+    213: [214],
+    214: [213],
+}
+
+
 @app.route('/transfer', methods=['GET', 'POST'])
 def transfer():
     who = session.get('who')
@@ -1743,7 +1786,16 @@ def transfer():
             def distance(t, base):
                 sec0, rack0, pos0 = parse_cell(base)
                 sec1, rack1, pos1 = parse_cell(t['from_cell'])
-                return abs(sec0 - sec1) + abs(rack0 - rack1) + abs(pos0 - pos1)
+
+                sector_penalty = 0
+                if sec0 != sec1:
+                    if sec1 not in sector_neighbors.get(sec0, []):
+                        sector_penalty = 100  # Штраф если сектора не соседние
+                    # иначе штрафа нет, если соседние
+
+                return abs(rack0 - rack1) + abs(pos0 - pos1) + sector_penalty
+
+
 
             def sort_by_nearest(group, from_cell):
                 return sorted(group, key=lambda t: distance(t, from_cell))
@@ -1941,6 +1993,333 @@ def transfer_scan_item():
     finally:
         conn.close()
 
+@app.route('/transfer/update_task', methods=['POST'])
+def update_transfer_task():
+    if 'who' not in session:
+        return jsonify({'status': 'error', 'message': 'Не авторизован'}), 403
+
+    data = request.get_json()
+    id_task = data.get('id_task')
+    counts = data.get('counts')
+
+    if not id_task or counts is None:
+        return jsonify({'status': 'error', 'message': 'Неверные данные'}), 400
+
+    who = session['who']
+    now = datetime.now()
+    date_str = now.strftime('%Y-%m-%d')
+    time_str = now.strftime('%H:%M:%S')
+
+    conn = connect_to_db()
+    if not conn:
+        return jsonify({'status': 'error', 'message': 'Ошибка подключения'}), 500
+
+    try:
+        cursor = conn.cursor()
+
+        # Получаем whoIdUpdate
+        cursor.execute("""
+            SELECT ID FROM DITE_Logins WHERE Surname_N_LN = ?
+        """, (who,))
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({'status': 'error', 'message': 'Пользователь не найден'}), 404
+
+        who_id = row[0]
+
+        # Вызываем процедуру
+        cursor.execute("""
+            EXEC [u1603085_Maxim].[pr2_ServiceBroker_СкладскаяЗадача_Очередь_ОбновитьЗадачу]
+            @idTask=?, @whoUpdate=?, @whoIdUpdate=?, @counts=?, @dateUpdate=?, @timeUpdate=?
+        """, (id_task, who, who_id, counts, date_str, time_str))
+
+        conn.commit()
+
+        # Ждем 1 секунду и проверяем статус
+        import time
+        time.sleep(1)
+
+        cursor.execute("""
+            SELECT Status
+            FROM DITE_DeliveriesHistory_Tasks
+            WHERE ID_Task = ? AND ID_Login = ? AND DateCreate = ? AND TimeCreate = ?
+        """, (id_task, who_id, date_str, time_str))
+
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({'status': 'error', 'message': 'История не найдена'}), 500
+
+        status = row[0]
+        if status == 0:
+            return jsonify({'status': 'success'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Задача не была успешно обновлена'})
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+
+
+
+@app.route('/shop_queue', methods=['GET', 'POST'])
+def shop_queue():
+    who = session.get('who')
+    if not who:
+        return "Не авторизован", 401
+
+    turn = 'На магазин'
+    mode = request.args.get('mode', 'default')
+    if request.method == 'GET' and mode:
+        session['shop_queue_mode'] = mode
+    mode = session.get('shop_queue_mode', 'default')
+    skip_id = request.args.get('skip')
+
+    conn = connect_to_db()
+    if not conn:
+        return "Ошибка подключения к базе данных", 500
+
+    try:
+        cursor = conn.cursor()
+        session['scanned_count'] = 0
+
+        if mode == 'marketplace':
+            cursor.execute("EXEC [u1603085_Maxim].[pr2_Мониторинг_Очереди_Copy] @Turn=?, @Who=?, @Mode=?", (turn, who, mode))
+        else:
+            cursor.execute("EXEC [u1603085_Maxim].[pr2_Мониторинг_Очереди_Copy] @Turn=?, @Who=?", (turn, who))
+
+        row = cursor.fetchone()
+        if not row:
+            session.pop('skipped_tasks', None)
+            return "Нет заданий", 200
+
+        id_orders     = row[0]
+        id_deliveries = row[1]
+
+        cursor.execute("""
+            SELECT ID, Types, Froms, Tho, Articul, HS, Sizes, Heights, HeightsRus, Counts
+            FROM DITE_DeliveriesTasks
+            WHERE ID_Deliveries = ? AND ID_Orders = ?
+              AND ISNULL(Status, '') = ''
+              AND ISNULL(WhoConfrim, '') = ''
+              AND ISNULL(DateConfrim, '') = ''
+              AND ISNULL(TimeConfrim, '') = ''
+        """, (id_deliveries, id_orders))
+        rows = cursor.fetchall()
+
+
+        if not rows:
+            session.pop('skipped_tasks', None)
+            return "Все задачи уже выполнены", 200
+
+        tasks = []
+        valid_tasks = []
+        for row in rows:
+            task_id = row[0]
+
+            # Проверяем наличие в DITE_Deliveries_MPArticulsToPositions_v2
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM DITE_Deliveries_MPArticulsToPositions_v2
+                WHERE ID_Task = ?
+            """, (task_id,))
+            exists = cursor.fetchone()[0]
+
+            if exists == 0:
+                continue  # Пропускаем эту задачу
+
+            task = {
+                'task_number': row[0],
+                'types': row[1],
+                'from_cell': row[2],
+                'target_cell': row[3],
+                'articul': row[4],
+                'hs': row[5],
+                'sizes': row[6],
+                'heights': row[7],
+                'heightsrus': row[8],
+                'counts': row[9],
+                'id_orders': id_orders,
+                'id_deliveries': id_deliveries
+            }
+            valid_tasks.append(task)
+
+
+        if not valid_tasks:
+            return "Нет задач", 200
+
+        t = valid_tasks[0]
+
+
+        # Инфо по артикулу (как в transfer)
+        cursor.execute("SELECT Gender, ID FROM DITE_Articuls WHERE Articul = ?", (t['articul'],))
+        row = cursor.fetchone()
+        gender = row[0] if row else ""
+        id_articul = row[1] if row else None
+
+        model, color = "", ""
+        if id_articul:
+            cursor.execute("SELECT Models, ID FROM DITE_Articuls_Models WHERE ID_Articuls = ?", (id_articul,))
+            row = cursor.fetchone()
+            if row:
+                model = row[0]
+                id_model = row[1]
+                cursor.execute("SELECT Color FROM DITE_Cloaths WHERE ID = ?", (id_model,))
+                row = cursor.fetchone()
+                color = row[0] if row else ""
+
+        task = t.copy()
+        task.update({
+            'gender': gender,
+            'model': model,
+            'color': color,
+            'remaining_tasks': len(valid_tasks)
+        })
+
+        return render_template("shop_queue.html", task=task)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return f"Ошибка: {e}", 500
+    finally:
+        conn.close()
+
+
+
+
+
+def get_remaining_tasks_count(conn, id_orders, id_deliveries):
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM DITE_DeliveriesTasks
+        WHERE ID_Deliveries = ?
+          AND ID_Orders = ?
+          AND ISNULL(Status, '') = ''
+          AND ISNULL(WhoConfrim, '') = ''
+          AND ISNULL(DateConfrim, '') = ''
+          AND ISNULL(TimeConfrim, '') = ''
+    """, (id_deliveries, id_orders))
+    row = cursor.fetchone()
+    return row[0] if row else 0
+
+
+
+
+
+
+@app.route('/shop_queue/print_box', methods=['POST'])
+def shop_queue_print_box():
+    if 'who' not in session:
+        return jsonify({'error': 'Не авторизован'}), 403
+
+    data = request.get_json()
+    count = int(data.get('count', 1))
+    task = session.get('shop_queue_task')
+    if not task:
+        return jsonify({'error': 'Нет задачи'}), 400
+
+    conn = connect_to_db()
+    try:
+        cursor = conn.cursor()
+        now = datetime.now()
+        cursor.execute("""
+            INSERT INTO DITE_Queue_CasePrint
+            (NumDocument, TypeDocument, CountCase, Who, DatePrint, TimePrint)
+            VALUES (?, 'МП', ?, ?, ?, ?)
+        """, (
+            task['doc'],
+            count,
+            session['who'],
+            now.strftime("%Y-%m-%d"),
+            now.strftime("%H:%M:%S")
+        ))
+        conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+
+
+@app.route('/shop_queue/status', methods=['GET'])
+def shop_queue_status():
+    scanned = session.get('scanned_items', [])
+    return jsonify({'items': scanned})
+
+
+@app.route('/shop_queue/scan', methods=['POST'])
+def shop_queue_scan():
+    data = request.get_json()
+    code = data.get('code', '').strip()
+    who = session.get('who', 'UNKNOWN')
+
+    if not code:
+        return jsonify({'status': 'error', 'message': 'Нет кода'}), 400
+
+    conn = connect_to_db()
+    if not conn:
+        return jsonify({'status': 'error', 'message': 'Нет подключения к БД'}), 500
+
+    cursor = conn.cursor()
+    try:
+        scanned = session.get('scanned_items', [])
+
+        if '-' in code and code.count('-') == 1:  # коробка
+            # Присваиваем всем без box
+            for item in scanned:
+                if item.get('box') is None:
+                    item['box'] = code
+            session['scanned_items'] = scanned
+            return jsonify({'status': 'success', 'message': 'Коробка присвоена', 'items': scanned})
+
+        else:  # товар
+            # Получаем Articul и HS
+            cursor.execute("""
+                SELECT Articul, HS
+                FROM DITE_Articuls_LabelsPrint
+                WHERE QrCode = ?
+            """, (code,))
+            row = cursor.fetchone()
+            if not row:
+                return jsonify({'status': 'error', 'message': 'QR-код не найден в БД'}), 400
+
+            articul, hs = row
+            # Проверка на дубли
+            for item in scanned:
+                if item['qrcode'] == code:
+                    return jsonify({'status': 'error', 'message': 'Этот товар уже сканирован'}), 400
+
+            scanned.append({
+                'qrcode': code,
+                'articul': articul,
+                'hs': hs,
+                'box': None
+            })
+            session['scanned_items'] = scanned
+            return jsonify({'status': 'success', 'message': 'Товар добавлен', 'items': scanned})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/shop_queue/delete', methods=['POST'])
+def delete_scanned_item():
+    index = request.get_json().get('index')
+    scanned = session.get('scanned_items', [])
+    try:
+        index = int(index)
+        if 0 <= index < len(scanned):
+            scanned.pop(index)
+            session['scanned_items'] = scanned
+    except:
+        pass
+    return jsonify({'items': scanned})
 
 
 @app.route('/logout')
@@ -1951,4 +2330,3 @@ def logout():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
-
