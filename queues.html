@@ -1,19 +1,19 @@
 {% extends 'layout.html' %}
-{% block title %}Документы{% endblock %}
+{% block title %}Очереди{% endblock %}
 {% block content %}
 
 <style>
   /* Основная обёртка страницы */
-  .docs-page {
-    width: 95%;
-    max-width: 480px; /* или 600px — под нужный размер TSD */
-    margin: 0 auto;
-    padding: 0;
-    box-sizing: border-box;
-    background: #fefefe;
-    color: #333;
-    font-family: 'Montserrat', sans-serif;
-  }
+.docs-page {
+  width: 95vw;;        /* на всю ширину экрана */
+  max-width: 95%;     /* снимаем ограничение по ширине */
+  margin: 0;           /* убираем центровку */
+  padding: 0;
+  box-sizing: border-box;
+  background: #fefefe;
+  color: #333;
+  font-family: 'Montserrat', sans-serif;
+}
 
   /* Верхняя панель с оранжевым «уголком» и иконкой поиска */
   .top-nav {
@@ -55,16 +55,17 @@
 
   /* Основной контейнер с карточками */
   .docs-content {
-    padding: 10px;
+    padding:  0 8 px;
   }
 
   /* Сетка карточек (два столбца) */
-  .cards-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-top: 5px;
-  }
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
 
   /* Карточка */
   .card {
@@ -83,9 +84,9 @@
 
   /* Иконка в карточке */
   .card-icon {
-    width: 42px;
-    height: 42px;
-    margin-bottom: 6px;
+    width: 51px;
+    height: 51px;
+    margin-bottom: 8px;
     background-size: contain;
     background-repeat: no-repeat;
     background-position: center;
@@ -93,7 +94,7 @@
 
   /* Заголовок карточки */
   .card-title {
-    font-size: 0.9em;
+    font-size: 1em;
     font-weight: 600;
     text-align: center;
     line-height: 1.3em;
@@ -101,16 +102,35 @@
     margin: 0;
     padding: 0 4px; /* небольшой отступ, если название длинное */
   }
+  html, body {
+  overflow-x: hidden;
+}
 </style>
-
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <div class="docs-page">
   <!-- Верхняя панель -->
   <div class="top-nav">
     <div class="nav-shape"></div>
-    <div class="nav-title">Документы</div>
-    <div class="nav-search"></div>
+    <div class="nav-title">Очереди</div>
   </div>
-
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        {% for category, message in messages %}
+          Swal.fire({
+            title: {{ message|tojson }},
+            icon:  {{ category|tojson }},    // 'info', 'success', 'error'…
+            toast: true,
+            position: 'top-end',
+            timer: 3000,
+            showConfirmButton: false
+          });
+        {% endfor %}
+      });
+    </script>
+  {% endif %}
+{% endwith %}
   <div class="docs-content">
     <div class="cards-grid">
 
@@ -127,17 +147,22 @@
              style='background-image: url("{{ url_for('static', filename='icons/warehouse_icon_3.png') }}");'></div>
         <div class="card-title">Перемещение</div>
       </a>
-
+              <!-- Маркетплейсы -->
+      <a href="{{ url_for('queue_turn', turn='На МП') }}" class="card">
+        <div class="card-icon"
+            style='background-image: url("{{ url_for('static', filename='icons/default_icon.png') }}");'></div>
+        <div class="card-title">Маркетплейсы</div>
+      </a>
       <!-- На магазин -->
       <a href="{{ url_for('queue_turn', turn='На магазин') }}" class="card">
         <div class="card-icon"
-             style='background-image: url("{{ url_for('static', filename='icons/default_icon.png') }}");'></div>
+             style='background-image: url("{{ url_for('static', filename='icons/warehouse_icon_1.png') }}");'></div>
         <div class="card-title">На магазин</div>
       </a>
 
-    </div>
+
+    </div>  
   </div>
 </div>
 
 {% endblock %}
-

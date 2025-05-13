@@ -6,6 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- Подключение SweetAlert2 для модальных окон -->
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+
+
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap');
     /* Обнуляем отступы и растягиваем на весь экран */
@@ -95,57 +98,83 @@
     /* Блок кнопок */
     .buttons-block {
       position: sticky;
-      bottom: 10px; /* или сколько вам отступ нужно */
-      background: #fff;  /* по необходимости совпадёт с фоном */
-      padding-top: 10px; /* немного пространства сверху */
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 15px;
+      bottom: 10px;
+      background: #fff;
+      padding: 5px 0;
+      width: 100%;
       max-width: 600px;
-      width: 100%;
-      padding: 10px 0;
+      margin: 0 auto;
+      box-sizing: border-box;
     }
-    .btn-primary {
-      width: 100%;
-      padding: 15px 0;
-      font-size: 1.5em;
-      background: linear-gradient(135deg, #FF3366, #FF7733);
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      text-align: center;
+
+    .buttons-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .buttons-row a {
+      flex: 1;
+      display: flex;           /* делаем flex-контейнер */
+      align-items: center;     /* центрируем по вертикали */
+      justify-content: center; /* центрируем по горизонтали */
       text-decoration: none;
+      padding: .8em 0;         /* вертикальные отступы */
+      box-sizing: border-box;
+    }
+
+    /* Первая кнопка (градиент) */
+    .btn-primary {
+           background: linear-gradient(135deg, #FF3366, #FF7733);
+           font-size: 1.2em;
+           padding: .8em 0;
+      color: #fff;
+      border-radius: 6px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      transition: background 0.3s, transform 0.2s;
+      transition: background .3s;
     }
     .btn-primary:hover {
       background: linear-gradient(135deg, #FF2255, #FF6633);
-      transform: translateY(-2px);
     }
+    
+    /* Вторая кнопка */
     .btn-secondary {
-      width: 80%;
       padding: 10px 0;
+      font-size: 1.2em;
+      background: #333;
+      color: #fff;
+      border-radius: 6px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      transition: background .3s;
+    }
+    .btn-secondary:hover {
+      background: #555;
+    }
+    
+    /* Кнопка «Завершить работу»: занимает всю ширину контейнера */
+    .complete-btn {
+      display: block;
+      width: 100%;
+      padding: 12px 0;
       font-size: 1.2em;
       background: #333;
       color: #fff;
       border: none;
       border-radius: 6px;
       text-align: center;
-      text-decoration: none;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-      transition: background 0.3s, transform 0.2s;
+      margin: 0;  /* уже есть отступ сверху в buttons-row */
+      transition: background .3s;
     }
-    .btn-secondary:hover {
+    .complete-btn:hover {
       background: #555;
-      transform: translateY(-2px);
     }
+
+
   </style>
 </head>
 <body>
   <!-- Кнопка печати -->
   <div class="print-button">
-    <a href="{{ url_for('print_document', id_deliveries=order.ID_Deliveries, queue=queue) }}" id="printBtn" title="Печать">
+    <a href="{{ url_for('print_document', id_deliveries=order.ID_Deliveries, id_orders=order.ID, queue=queue) }}" id="printBtn" title="Печать">
       <svg xmlns="http://www.w3.org/2000/svg" fill="#ff3c00" viewBox="0 0 24 24">
         <path d="M19 8h-1V3H6v5H5c-1.103 0-2 .897-2 2v7h4v4h12v-4h4v-7c0-1.103-.897-2-2-2zm-3 11H8v-3h8v3zm3-5H4v-4h16v4z"/>
       </svg>
@@ -188,18 +217,42 @@
       {% endif %}
       <p>
         <span class="label">Количество складских задач:</span>
-        {% if order.CountTask %}
-          {{ order.CountTask }} шт.
-        {% else %}
-          Не указано
-        {% endif %}
+        {{ order.remaining_tasks }} шт.
       </p>
     </div>
-    <div class="buttons-block">
-      <a href="{{ url_for('transfer') }}" class="btn-primary">Приступить к заданию</a>
-      <a href="{{ url_for('queues') }}" class="btn-secondary">Вернуться к очередям</a>
+    <div class="buttons-row">
+      {% if queue == 'Перемещение' %}
+        <a class="btn-primary"
+           href="{{ url_for('transfer', queue=queue) }}">
+          Приступить
+        </a>
+      {% elif queue == 'На МП' %}
+        <a class="btn-primary"
+           href="{{ url_for('shop_queue', queue=queue) }}">
+          Приступить
+        </a>
+      {% endif %}
+      <a href="{{ url_for('release_and_queues', prev_id=order.ID) }}"
+         class="btn-secondary"
+         id="startBtn">
+        Вернуться
+      </a>
     </div>
-  </div>
+    
+
+            
+            
+    </div>
+    <form method="post" action="{{ url_for('split_order') }}">
+      <input type="hidden" name="order_id"     value="{{ order.ID }}">
+      <input type="hidden" name="id_deliveries" value="{{ order.ID_Deliveries }}">
+      <input type="hidden" name="turn"         value="{{ queue }}">
+      <button type="submit" class="complete-btn">
+        Завершить работу
+      </button>
+    </form>
+    
+    
   
   <!-- Скрипт для обработки нажатия кнопки печати -->
   <script>
@@ -210,12 +263,11 @@
         const url = printBtn.getAttribute('href');
         fetch(url)
           .then(response => response.text())
-          .then(result => {
+          .then(() => {
             Swal.fire({
               icon: 'success',
               title: 'Печать запущена',
-              text: result,
-              timer: 2000,
+              timer: 1500,
               showConfirmButton: false
             });
           })
@@ -230,6 +282,25 @@
           });
       });
     });
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const startBtn = document.getElementById('startBtn');
+      startBtn.addEventListener('click', e => {
+        e.preventDefault();
+        const transferUrl = startBtn.getAttribute('href');
+        // отправляем на формирование печати, но не показываем алерты
+        fetch(`{{ url_for('print_document',
+                          id_deliveries=order.ID_Deliveries,
+                          id_orders=order.ID,
+                          queue=queue) }}`)
+          .catch(console.error)   // если нужно, логируем ошибку
+          .finally(() => {
+            // сразу переходим к переносу
+            window.location.href = transferUrl;
+          });
+      });
+    });
   </script>
 </body>
 </html>
+
