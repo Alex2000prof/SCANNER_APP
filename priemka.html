@@ -1,85 +1,80 @@
-{% extends 'layout.html' %}
-{% block title %}Приёмка{% endblock %}
-{% block content %}
-
-<h2>Приёмка (сканируйте честный знак)</h2>
-
-<label>Номер поставки:</label>
-<input type="text" id="deliveryIdInput" placeholder="Например: 1702">
-
-<label>Номер коробки:</label>
-<input type="text" id="boxNumInput" placeholder="Например: 9999">
-
-<!-- Поле ввода, если хотим ручной ввод -->
-<input type="text" id="codeInput" placeholder="Сканируйте ЧЗ..." autofocus>
+{% extends 'layout.html' %} {% block title %}Приёмка — номер коробки{% endblock
+%} {% block content %}
+<h2>Отсканируйте штрихкод коробки</h2>
+<form id="boxForm" method="POST" action="/priemka/find_box">
+  <input
+    type="text"
+    id="boxInput"
+    name="box_code"
+    required
+    autofocus
+    placeholder="Сканируйте штрихкод коробки"
+  />
+  <button type="submit">Поиск</button>
+</form>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <script>
-  const successSound = new Audio('{{ url_for("static", filename="audio/success.mp3") }}');
-  const errorSound   = new Audio('{{ url_for("static", filename="audio/fail.mp3") }}');
+  const boxForm = document.getElementById("boxForm");
+  const boxInput = document.getElementById("boxInput");
 
-  const deliveryIdInput = document.getElementById('deliveryIdInput');
-  const boxNumInput     = document.getElementById('boxNumInput');
-  const codeInput       = document.getElementById('codeInput');
-
-  document.addEventListener('DOMContentLoaded', () => {
-    codeInput.focus();
+  document.addEventListener("DOMContentLoaded", () => boxInput.focus());
+  boxInput.addEventListener("paste", function () {
+    setTimeout(() => {
+      const code = boxInput.value.trim();
+      if (code) boxForm.submit();
+    }, 100);
   });
-
-  // (Можно оставить paste/keydown, если хотим ручной ввод)
-  codeInput.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') {
-      const code = codeInput.value.trim();
-      if (code) submitCode(code);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "F9") {
+      e.preventDefault();
+      boxInput.focus();
     }
   });
-
-  // (Главная функция для AJAX)
-  function submitCode(code) {
-    const deliveryId = deliveryIdInput.value.trim();
-    const boxNum     = boxNumInput.value.trim();
-
-    fetch('/priemka/submit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        code: code,
-        delivery_id: deliveryId,
-        box_num: boxNum
-      })
-    })
-    .then(res => res.json())
-    .then(data => {
-      if (data.status === 'success') {
-        successSound.play();
-        codeInput.value = '';
-        codeInput.focus();
-      } else {
-        errorSound.play();
-        Swal.fire('Ошибка', data.message, 'error')
-          .then(() => codeInput.focus());
-        codeInput.value = '';
-      }
-    })
-    .catch(err => {
-      errorSound.play();
-      Swal.fire('Ошибка', String(err), 'error')
-        .then(() => codeInput.focus());
-      codeInput.value = '';
-    });
-  }
-
-  window.onBarcodeScanned = function(scannedCode) {
-    console.log("Сканирован код на priemka:", scannedCode);
-    const codeInput = document.getElementById('codeInput');
-    codeInput.value = scannedCode;
-    // Можно сразу вызвать отправку через AJAX, например:
-    submitCode(scannedCode);
+  boxInput.addEventListener("blur", () => {
+    setTimeout(() => {
+      if (document.activeElement !== boxInput) boxInput.focus();
+    }, 200);
+  });
+  window.onBarcodeScanned = function (scannedCode) {
+    boxInput.value = scannedCode;
+    boxForm.submit();
   };
 </script>
 
-<a href="/main" class="back-button">Главное меню</a>
-{% endblock %}
-
-
-
-
+{% if error %}
+<script>
+  Swal.fire({
+    icon: "warning",
+    title: "{{ 'Коробка занята другим пользователем' if 'занята другим' in error else 'У вас есть незавершенная коробка' if 'забронирована' in error else 'Ошибка' }}",
+    text: "{{ error }}",
+    confirmButtonText: "Ок",
+  });
+</script>
+{% endif %} {% if already_scanned %}
+<script>
+  Swal.fire({
+    icon: "warning",
+    title: "Коробка уже отсканирована",
+    text: "Хотите пересканировать всё заново? Все сканы будут удалены.",
+    showCancelButton: true,
+    confirmButtonText: "Да, пересканировать",
+    cancelButtonText: "Нет",
+  }).then((result) => {
+    if (result.isConfirmed) {
+      fetch("/priemka/restart/{{ box_id }}", { method: "POST" })
+        .then((r) => {
+          if (r.status === 204) {
+            window.location.href = "/priemka/scan/{{ box_id }}";
+          } else {
+            Swal.fire("Ошибка", "Не удалось сбросить коробку!", "error");
+          }
+        })
+        .catch(() => {
+          Swal.fire("Ошибка", "Сетевая ошибка при сбросе коробки", "error");
+        });
+    }
+    // Если пользователь нажал "Нет" — остаёмся на странице
+  });
+</script>
+{% endif %} {% endblock %}

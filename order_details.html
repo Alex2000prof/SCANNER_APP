@@ -231,6 +231,11 @@
            href="{{ url_for('shop_queue', queue=queue) }}">
           Приступить
         </a>
+      {% elif queue == 'Приёмка' %}
+        <a class="btn-primary"
+           href="{{ url_for('priemka_queue', queue=queue) }}">
+          Приступить
+        </a>
       {% endif %}
       <a href="{{ url_for('release_and_queues', prev_id=order.ID) }}"
          class="btn-secondary"
@@ -243,7 +248,7 @@
             
             
     </div>
-    <form method="post" action="{{ url_for('split_order') }}">
+    <form id="completeForm" method="post" action="{{ url_for('split_order') }}">
       <input type="hidden" name="order_id"     value="{{ order.ID }}">
       <input type="hidden" name="id_deliveries" value="{{ order.ID_Deliveries }}">
       <input type="hidden" name="turn"         value="{{ queue }}">
@@ -300,7 +305,32 @@
           });
       });
     });
+    document.addEventListener('DOMContentLoaded', () => {
+      const form = document.getElementById('completeForm');
+      form.addEventListener('submit', e => {
+        e.preventDefault();  // не отправлять, пока не подтвердят
+        Swal.fire({
+          title: 'Подтверждение',
+          text:  'Вы уверены, что хотите завершить работу?',
+          icon:  'warning',
+          showCancelButton:  true,
+          confirmButtonText: 'Да, завершить',
+          cancelButtonText:  'Нет'
+        }).then(result => {
+          if (result.isConfirmed) {
+            form.submit();
+          }
+        });
+      });
+    });
   </script>
 </body>
 </html>
+
+
+
+
+
+
+
 

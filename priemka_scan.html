@@ -1,0 +1,233 @@
+{% extends 'layout.html' %} {% block title %}Сканирование коробки{% endblock %}
+{% block content %}
+
+<h2>Коробка №{{ num_case }} (Поставка №{{ delivery_id }})</h2>
+<p>Отсканировано: <span id="scannedCount">{{ scanned_count }}</span></p>
+
+<div id="lastScanBlock" class="last-scan-block" style="display: none">
+  <h3>Последний скан</h3>
+  <p><strong>Уникальный код:</strong> <span id="lsUniq"></span></p>
+  <p><strong>Артикул:</strong> <span id="lsArticul"></span></p>
+  <p><strong>Размер/Рост:</strong> <span id="lsSizeHeight"></span></p>
+</div>
+
+<input type="text" id="codeInput" placeholder="Сканируйте товар..." autofocus />
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+  const codeInput = document.getElementById("codeInput");
+  const scannedCountEl = document.getElementById("scannedCount");
+  const lastScanBlock = document.getElementById("lastScanBlock");
+  const lsUniq = document.getElementById("lsUniq");
+  const lsArticul = document.getElementById("lsArticul");
+  const lsSizeHeight = document.getElementById("lsSizeHeight");
+  const boxId = parseInt("{{ box_id }}", 10);
+  const deliveryId = parseInt("{{ delivery_id }}", 10);
+  const numCase = "{{ num_case }}";
+
+  document.addEventListener("DOMContentLoaded", () => {
+    codeInput.focus();
+
+    // Обработчик для кнопки "Завершить"
+    const finishBtn = document.getElementById("finishBtn");
+    console.log('Finish button:', finishBtn);
+    if (finishBtn) {
+      finishBtn.onclick = function () {
+        console.log('Finish button clicked');
+        fetch(`/priemka/scan/${boxId}/finish`, {
+          method: 'POST'
+        }).then(response => {
+          if (response.ok) {
+            window.location.href = "/priemka";
+          }
+        });
+      };
+    } else {
+      console.error('Finish button not found!');
+    }
+  });
+
+  document.addEventListener("DOMContentLoaded", () => {
+    if (scanStatus === "Готово") {
+      Swal.fire({
+        title: 'Коробка завершена',
+        text: `Коробка №${numCase} уже завершена. Хотите пересканировать?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Пересканировать',
+        cancelButtonText: 'Отмена'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          fetch(`/priemka/restart/${boxId}`, {
+            method: 'POST'
+          }).then(response => {
+            if (response.ok) {
+              window.location.reload();
+            }
+          });
+        } else {
+          window.location.href = "/priemka";
+        }
+      });
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "F9") {
+      e.preventDefault();
+      codeInput.focus();
+    }
+  });
+
+  codeInput.addEventListener("blur", () => {
+    setTimeout(() => {
+      if (document.activeElement !== codeInput) {
+        codeInput.focus();
+      }
+    }, 200);
+  });
+
+  // === ВАЖНО: Обработка и Enter, и Paste!
+  codeInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      const code = codeInput.value.trim();
+      if (code) submitScanCode(code);
+    }
+  });
+  codeInput.addEventListener("paste", function () {
+    setTimeout(() => {
+      const code = codeInput.value.trim();
+      if (code) submitScanCode(code);
+    }, 100);
+  });
+
+  function submitScanCode(code) {
+    fetch(`/priemka/scan/${boxId}/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.status === 'confirm_box_switch') {
+          Swal.fire({
+            title: 'У вас есть незавершенная коробка',
+            text: data.message,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Завершить и перейти',
+            cancelButtonText: 'Остаться'
+          }).then((result) => {
+            if (result.isConfirmed) {
+              fetch(`/priemka/scan/${data.current_box_id}/finish`, {
+                method: 'POST'
+              }).then(response => {
+                if (response.ok) {
+                  window.location.href = `/priemka/scan/${data.new_box_id}`;
+                }
+              });
+            }
+          });
+          return;
+        }
+        else if (data.status === 'redirect') {
+          window.location.href = data.url;
+          return;
+        }
+        else if (data.status === "success") {
+          if (window.AndroidAudio && window.AndroidAudio.playSuccess) {
+            window.AndroidAudio.playSuccess();
+          }
+          scannedCountEl.textContent = data.scanned_count;
+          if (data.last_item) {
+            lastScanBlock.style.display = "block";
+            lsUniq.textContent = data.last_item.Uniq || "";
+            lsArticul.textContent = data.last_item.Articul || "";
+            lsSizeHeight.textContent = data.last_item.SizeHeight || "";
+          }
+          codeInput.value = "";
+          codeInput.focus();
+        } else {
+          if (window.AndroidAudio && window.AndroidAudio.playError) {
+            window.AndroidAudio.playError();
+          }
+          Swal.fire("Ошибка", data.message, "error").then(() =>
+            codeInput.focus()
+          );
+          codeInput.value = "";
+        }
+      })
+      .catch((err) => {
+        if (window.AndroidAudio && window.AndroidAudio.playError) {
+          window.AndroidAudio.playError();
+        }
+        Swal.fire("Ошибка", String(err), "error").then(() => codeInput.focus());
+        codeInput.value = "";
+      });
+  }
+
+  window.onBarcodeScanned = function (scannedCode) {
+    submitScanCode(scannedCode);
+  };
+
+  // Обработчик для всех кнопок возврата/выхода
+  document.querySelectorAll('a[href="/priemka"], a[href="/main"]').forEach(link => {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      
+      Swal.fire({
+        title: 'У вас есть незавершенная коробка',
+        text: `Коробка №${numCase} (Поставка №${deliveryId}). Завершить работу с коробкой?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Завершить',
+        cancelButtonText: 'Остаться'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          fetch(`/priemka/scan/${boxId}/finish`, {
+            method: 'POST'
+          }).then(response => {
+            if (response.ok) {
+              window.location.href = this.getAttribute('href');
+            }
+          });
+        }
+      });
+    });
+  });
+</script>
+
+<div class="button-container">
+  <div class="button-row">
+    <a href="{{ url_for('priemka_box_contents', id_case=box_id) }}" class="back-button">Содержимое</a>
+    <button id="finishBtn" class="back-button" style="background: #4a90e2">Завершить</button>
+  </div>
+  <div class="button-row">
+    <a href="/priemka" class="back-button">Вернуться</a>
+    <a href="{{ url_for('priemka_boxes', delivery_id=delivery_id, current_box_id=box_id) }}" class="back-button">Коробки</a>
+  </div>
+</div>
+
+<style>
+  .button-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 340px;
+    margin: 18px auto;
+  }
+  .button-row {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+  }
+  .back-button {
+    width: 140px;
+    padding: 14px 8px;
+    text-align: center;
+    font-size: 18px;
+    white-space: nowrap;
+    display: inline-block;
+  }
+</style>
+{% endblock %}

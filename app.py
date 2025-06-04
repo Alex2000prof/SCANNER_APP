@@ -15,13 +15,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-db_server = ""
-db_port = ""
-db_name = ""
-db_user = ""
-db_password = ""
+db_server = "31.130.38.131"
+db_port = "27020"
+db_name = "u1603085_Dite"
+db_user = "u1603085_Maxim"
+db_password = "i!r5z99R"
 
-app = Flask(__name__)
+app = Flask(__name__)   
 app.secret_key = "Eo9HC!Dk39Q0XyF2uB^#hLzv"
 
 def connect_to_db():
@@ -46,10 +46,423 @@ def priemka():
     return render_template('priemka.html')
 
 
+@app.route('/priemka/find_box', methods=['POST'])
+def priemka_find_box():
+    if 'who' not in session:
+        return redirect(url_for('login'))
+
+    code = request.form.get('box_code', '').strip()
+    user_id = session['who']
+
+    conn = connect_to_db()
+    if conn is None:
+        return "Ошибка подключения к базе", 500
+    cursor = conn.cursor()
+
+    # Сначала проверяем коробку, которую сканируем
+    cursor.execute("SELECT ID, ID_Deliveries, ScanStatus, WhoReserved, NumCase FROM DITE_Deliveries_Cases WHERE Barcode = ?", (code,))
+    box = cursor.fetchone()
+
+    if not box:
+        conn.close()
+        return render_template('priemka.html', error='Коробка не найдена!')
+
+    ID, ID_Deliveries, ScanStatus, WhoReserved, NumCase = box
+
+    # Если коробка уже забронирована другим пользователем
+    if WhoReserved and WhoReserved != user_id:
+        conn.close()
+        return render_template('priemka.html', error='Коробка занята другим пользователем!')
+
+    # Проверяем, есть ли уже забронированная коробка этим пользователем
+    cursor.execute("SELECT ID, NumCase FROM DITE_Deliveries_Cases WHERE WhoReserved = ? AND ID != ?", (user_id, ID))
+    other_reserved_box = cursor.fetchone()
+    if other_reserved_box:  # Если есть другая забронированная коробка
+        conn.close()
+        return render_template('priemka.html', error=f'У вас уже забронирована коробка №{other_reserved_box[1]}. Сначала завершите работу с ней.')
+
+    # ВАЖНО! Если ScanStatus == 'Готово' — ВОЗВРАЩАЕМ render_template, а не redirect!
+    if ScanStatus == 'Готово':
+        conn.close()
+        return render_template('priemka.html', already_scanned=True, box_id=ID)
+
+    # Если не забронирована — бронируем на себя
+    if not WhoReserved:
+        cursor.execute("UPDATE DITE_Deliveries_Cases SET WhoReserved=? WHERE ID=?", (user_id, ID))
+        conn.commit()
+
+    conn.close()
+    return redirect(url_for('priemka_scan', id_case=ID))
+
+
+
+
+@app.route('/priemka/boxes/<int:delivery_id>')
+def priemka_boxes(delivery_id):
+    if 'who' not in session:
+        return redirect(url_for('login'))
+
+    # Получаем current_box_id из параметров запроса
+    current_box_id = request.args.get('current_box_id')
+
+    conn = connect_to_db()
+    if conn is None:
+        return "Ошибка подключения к базе", 500
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT ID, NumCase, ScanStatus,
+            (SELECT COUNT(*) FROM DITE_Deliveries_Scans WHERE ID_Case = DITE_Deliveries_Cases.ID) AS Scanned
+        FROM DITE_Deliveries_Cases
+        WHERE ID_Deliveries = ?
+        ORDER BY NumCase
+    """, delivery_id)
+    rows = cursor.fetchall()
+    boxes = []
+    for row in rows:
+        box_id, num_case, scan_status, scanned = row
+        boxes.append({
+            'ID': box_id,
+            'NumCase': num_case,
+            'ScanStatus': scan_status,
+            'Scanned': scanned,
+        })
+    conn.close()
+    return render_template('priemka_boxes.html', delivery_id=delivery_id, boxes=boxes, current_box_id=current_box_id)
+
+
+
+@app.route('/priemka/box_contents/<int:id_case>')
+def priemka_box_contents(id_case):
+    if 'who' not in session:
+        return redirect(url_for('login'))
+
+    conn = connect_to_db()
+    if conn is None:
+        return "Ошибка подключения к базе", 500
+    cursor = conn.cursor()
+    cursor.execute("SELECT QrCode FROM DITE_Deliveries_Scans WHERE ID_Case=?", id_case)
+    rows = cursor.fetchall()
+    items = []
+    for row in rows:
+        qr = row[0]
+        cursor.execute("""
+            SELECT label.Articul, label.Sizes + '/' + hh.HeightsRus as SizeHeight
+            FROM (
+                SELECT Articul, HS, LEFT(HS, CHARINDEX('_', HS) - 1) AS Heights, 
+                       RIGHT(HS, LEN(HS) - CHARINDEX('_', HS)) AS Sizes, QrCode
+                FROM DITE_Articuls_LabelsPrint
+            ) AS label
+            INNER JOIN DITE_Articuls art ON art.Articul = label.Articul
+            INNER JOIN DITE_Articuls_Types typ ON typ.Gender = art.Gender AND typ.Type = art.Types
+            INNER JOIN DITE_Articuls_Types_Heights hh 
+                ON hh.ID_Types = typ.ID AND hh.Heights = label.Heights
+            WHERE QrCode = ?
+        """, qr)
+        art = cursor.fetchone()
+        items.append({
+            'Uniq': qr[-6:],
+            'Articul': art[0] if art else '',
+            'SizeHeight': art[1] if art else ''
+        })
+
+    # Узнаём NumCase коробки для заголовка
+    cursor.execute("SELECT NumCase FROM DITE_Deliveries_Cases WHERE ID=?", id_case)
+    res = cursor.fetchone()
+    num_case = res[0] if res else '?'
+
+    conn.close()
+    return render_template('priemka_box_contents.html', items=items, num_case=num_case)
+
+
+@app.route('/priemka/scan/<int:id_case>')
+def priemka_scan(id_case):
+    if 'who' not in session:
+        return redirect(url_for('login'))
+    user_id = session['who']
+
+    conn = connect_to_db()
+    if conn is None:
+        return "Ошибка подключения к базе", 500
+    cursor = conn.cursor()
+
+    # Получаем данные по коробке
+    cursor.execute("SELECT ID, NumCase, ID_Deliveries, ScanStatus, WhoReserved, Counts_TSD FROM DITE_Deliveries_Cases WHERE ID = ?", id_case)
+    box = cursor.fetchone()
+    if not box:
+        conn.close()
+        return "Коробка не найдена", 404
+
+    ID, NumCase, ID_Deliveries, ScanStatus, WhoReserved, Counts_TSD = box
+
+    if WhoReserved and WhoReserved != user_id:
+        conn.close()
+        return "Коробка уже занята другим", 403
+
+    if not WhoReserved:
+        cursor.execute("UPDATE DITE_Deliveries_Cases SET WhoReserved=? WHERE ID=?", (user_id, id_case))
+        conn.commit()
+
+    # Получаем последний QrCode из сканов этой коробки
+    cursor.execute(
+        "SELECT TOP 1 QrCode FROM DITE_Deliveries_Scans WHERE ID_Case = ? ORDER BY DateScan DESC, TimeScan DESC",
+        id_case
+    )
+    row = cursor.fetchone()
+    last_scan = None
+    if row:
+        qr_code = row[0]
+        # По QrCode ищем Articul и размер/рост
+        cursor.execute("""
+            SELECT label.Articul, label.Sizes + '/' + hh.HeightsRus as SizeHeight
+            FROM (
+                SELECT Articul, HS, LEFT(HS, CHARINDEX('_', HS) - 1) AS Heights, 
+                       RIGHT(HS, LEN(HS) - CHARINDEX('_', HS)) AS Sizes, QrCode
+                FROM DITE_Articuls_LabelsPrint
+            ) AS label
+            INNER JOIN DITE_Articuls art ON art.Articul = label.Articul
+            INNER JOIN DITE_Articuls_Types typ ON typ.Gender = art.Gender AND typ.Type = art.Types
+            INNER JOIN DITE_Articuls_Types_Heights hh 
+                ON hh.ID_Types = typ.ID AND hh.Heights = label.Heights
+            WHERE QrCode = ?
+        """, qr_code)
+        label = cursor.fetchone()
+        if label:
+            last_scan = {
+                'QrCode': qr_code,
+                'Articul': label[0],
+                'SizeHeight': label[1]
+            }
+        else:
+            last_scan = {'QrCode': qr_code, 'Articul': '', 'SizeHeight': ''}
+    else:
+        last_scan = None
+
+    # Считаем количество отсканированных товаров
+    cursor.execute("SELECT COUNT(*) FROM DITE_Deliveries_Scans WHERE ID_Case=?", id_case)
+    scanned_count = cursor.fetchone()[0]
+
+    conn.close()
+    return render_template(
+        'priemka_scan.html',
+        box_id=ID,
+        num_case=NumCase,
+        delivery_id=ID_Deliveries,
+        scanned_count=scanned_count,
+        last_scan=last_scan,
+        scan_status=ScanStatus
+    )
+
+
+
+@app.route('/priemka/scan/<int:id_case>/submit', methods=['POST'])
+def priemka_scan_submit(id_case):
+    if 'who' not in session:
+        return jsonify({'status': 'error', 'message': 'Необходима авторизация'}), 401
+    
+    user_id = session['who']
+    data = request.get_json()
+    code = data.get('code', '').strip()
+    now = datetime.now()
+    
+    if not code:
+        return jsonify({'status': 'error', 'message': 'Не указан код'})
+    
+    conn = connect_to_db()
+    if conn is None:
+        return jsonify({'status': 'error', 'message': 'Ошибка подключения к базе'}), 500
+    cursor = conn.cursor()
+    
+    # Проверяем, не является ли код штрихкодом коробки
+    cursor.execute("SELECT ID, NumCase FROM DITE_Deliveries_Cases WHERE Barcode = ?", (code,))
+    box = cursor.fetchone()
+    if box:
+        new_box_id = box[0]
+        num_case = box[1]
+        # Проверяем, не занята ли коробка другим пользователем
+        cursor.execute("SELECT WhoReserved, NumCase FROM DITE_Deliveries_Cases WHERE ID = ?", (id_case,))
+        current_box = cursor.fetchone()
+        if current_box and current_box[0] == user_id:
+            conn.close()
+            return jsonify({
+                'status': 'confirm_box_switch',
+                'message': f'У вас есть незавершенная коробка №{current_box[1]}. Завершить работу с ней?',
+                'current_box_id': id_case,
+                'new_box_id': new_box_id
+            })
+        
+        # Проверяем, не занята ли новая коробка другим пользователем
+        cursor.execute("SELECT WhoReserved FROM DITE_Deliveries_Cases WHERE ID = ?", (new_box_id,))
+        reserved = cursor.fetchone()
+        if reserved and reserved[0] and reserved[0] != user_id:
+            conn.close()
+            return jsonify({'status': 'error', 'message': 'Коробка занята другим пользователем'})
+        
+        conn.close()
+        # Возвращаем redirect на новую коробку
+        return jsonify({
+            'status': 'redirect',
+            'url': url_for('priemka_scan', id_case=new_box_id)
+        })
+
+    # Проверка на уникальность QrCode в базе (режим приёмки — по всей таблице)
+    cursor.execute("SELECT COUNT(*) FROM DITE_Deliveries_Scans WHERE QrCode = ?", (code,))
+    if cursor.fetchone()[0] > 0:
+        conn.close()
+        return jsonify({'status': 'error', 'message': 'Этот товар уже был отсканирован и не может быть отсканирован повторно!'})
+
+    # Получаем ID_FabricTask поставки
+    cursor.execute("""
+        SELECT d.ID_FabricTask 
+        FROM DITE_Deliveries d
+        INNER JOIN DITE_Deliveries_Cases c ON c.ID_Deliveries = d.ID
+        WHERE c.ID = ?
+    """, (id_case,))
+    delivery_task = cursor.fetchone()
+    if not delivery_task:
+        conn.close()
+        return jsonify({'status': 'error', 'message': 'Не удалось найти информацию о поставке!'})
+    
+    delivery_task_id = delivery_task[0]
+
+    # Проверяем ID_FabricTask товара
+    cursor.execute("""
+        SELECT ID_FabricTask
+        FROM DITE_Articuls_LabelsPrint
+        WHERE QrCode = ?
+    """, (code,))
+    item_task = cursor.fetchone()
+    if not item_task:
+        conn.close()
+        return jsonify({'status': 'error', 'message': 'QR-код не найден!'})
+    
+    item_task_id = item_task[0]
+
+    # Проверяем соответствие номеров ТЗ
+    if delivery_task_id != item_task_id:
+        conn.close()
+        return jsonify({
+            'status': 'error', 
+            'message': f'Товар из другого ТЗ! Ожидается ТЗ №{delivery_task_id}, а товар из ТЗ №{item_task_id}'
+        })
+
+    # Существующая логика сканирования товара
+    now = datetime.now()
+
+    cursor.execute("""
+        SELECT label.Articul, label.HS, label.Sizes + '/' + hh.HeightsRus as SizeHeight
+        FROM (
+            SELECT Articul, HS, LEFT(HS, CHARINDEX('_', HS) - 1) AS Heights, 
+                   RIGHT(HS, LEN(HS) - CHARINDEX('_', HS)) AS Sizes, QrCode
+            FROM DITE_Articuls_LabelsPrint
+        ) AS label
+        INNER JOIN DITE_Articuls art ON art.Articul = label.Articul
+        INNER JOIN DITE_Articuls_Types typ ON typ.Gender = art.Gender AND typ.Type = art.Types
+        INNER JOIN DITE_Articuls_Types_Heights hh 
+            ON hh.ID_Types = typ.ID AND hh.Heights = label.Heights
+        WHERE QrCode = ?
+    """, code)
+    item = cursor.fetchone()
+    if not item:
+        conn.close()
+        return jsonify({'status': 'error', 'message': 'QR-код не найден!'})
+
+    Articul, HS, SizeHeight = item
+
+    cursor.execute("SELECT NumCase FROM DITE_Deliveries_Cases WHERE ID=?", id_case)
+    row = cursor.fetchone()
+    NumCase = row[0] if row else None
+
+    cursor.execute(
+        "INSERT INTO DITE_Deliveries_Scans (ID_Case, NumCase, QrCode, Who, DateScan, TimeScan) VALUES (?, ?, ?, ?, ?, ?)",
+        (id_case, NumCase, code, user_id, now.date(), now.time())
+    )
+
+    cursor.execute(
+        "UPDATE DITE_Deliveries_Cases SET Counts_TSD = ISNULL(Counts_TSD,0) + 1, ScanStatus='Частично', WhoScanned=?, DateScan=?, TimeScan=? WHERE ID=?",
+        (user_id, now.date(), now.time(), id_case)
+    )
+    conn.commit()
+
+    cursor.execute("SELECT COUNT(*) FROM DITE_Deliveries_Scans WHERE ID_Case=?", id_case)
+    scanned_count = cursor.fetchone()[0]
+
+    conn.close()
+    return jsonify({
+        'status': 'success',
+        'scanned_count': scanned_count,
+        'last_item': {'Uniq': code[-6:], 'Articul': Articul, 'SizeHeight': SizeHeight}
+    })
+
+
+
+@app.route('/priemka/scan/<int:id_case>/finish', methods=['POST'])
+def priemka_scan_finish(id_case):
+    if 'who' not in session:
+        return jsonify({'status': 'error', 'message': 'Нет доступа!'}), 401
+    user_id = session['who']
+    now = datetime.now()
+
+    conn = connect_to_db()
+    if conn is None:
+        return jsonify({'status': 'error', 'message': 'Ошибка подключения к базе'}), 500
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE DITE_Deliveries_Cases SET ScanStatus='Готово', WhoScanned=?, DateScan=?, TimeScan=?, WhoReserved=NULL WHERE ID=?",
+        (user_id, now.date(), now.time(), id_case)
+    )
+
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success'})
+
+
+
+@app.route('/priemka/restart/<int:id_case>', methods=['POST'])
+def priemka_restart(id_case):
+    if 'who' not in session:
+        return jsonify({'status': 'error', 'message': 'Нет доступа!'}), 401
+    user_id = session['who']
+
+    conn = connect_to_db()
+    if conn is None:
+        return jsonify({'status': 'error', 'message': 'Ошибка подключения к базе'}), 500
+    cursor = conn.cursor()
+
+    # Удаляем все сканы для этой коробки
+    cursor.execute(
+        "DELETE FROM DITE_Deliveries_Scans WHERE ID_Case = ?",
+        (id_case,)
+    )
+    # (Если у вас есть вторая таблица сканов, подобная – тоже очистите её здесь:
+    #  cursor.execute("DELETE FROM DITE_Deliveries_Scans_Extra WHERE ID_Case = ?", (id_case,)) )
+
+    # Сбрасываем статус коробки и сразу бронируем её за текущим пользователем
+    cursor.execute(
+        "UPDATE DITE_Deliveries_Cases "
+        "SET ScanStatus = NULL, Counts_TSD = 0, WhoScanned = NULL, "
+        "DateScan = NULL, TimeScan = NULL, WhoReserved = ? "
+        "WHERE ID = ?",
+        (user_id, id_case)
+    )
+
+    conn.commit()
+    conn.close()
+
+    # Вместо INSERT в таблицу cache_bot_history — вызываем функцию логирования
+    cache_bot_history(user_id, f"Сброс сканов коробки {id_case} пользователем {user_id}")
+
+    # Возвращаем 204 No Content, чтобы JS на фронте понял: всё успешно
+    return ('', 204)
+
+
+
+
+
+
 @app.route('/')
 def home():
     # Редирект на логин
-    return redirect('/login')
+    return redirect('/login')   
 
 @app.route('/main', methods=['GET'])
 def main_menu():
@@ -58,134 +471,134 @@ def main_menu():
     return render_template('main_menu.html')
 
 
-@app.route('/priemka/submit', methods=['POST'])
-def priemka_submit():
-    if 'who' not in session:
-        return jsonify({'status': 'error', 'message': 'Не авторизован'}), 403
+# @app.route('/priemka/submit', methods=['POST'])
+# def priemka_submit():
+#     if 'who' not in session:
+#         return jsonify({'status': 'error', 'message': 'Не авторизован'}), 403
 
-    data = request.get_json()
-    if not data:
-        return jsonify({'status': 'error', 'message': 'No JSON data'}), 400
+#     data = request.get_json()
+#     if not data:
+#         return jsonify({'status': 'error', 'message': 'No JSON data'}), 400
 
-    code         = data.get('code')
-    user_doc_id  = data.get('delivery_id')  # номер поставки, введённый пользователем
-    user_box_num = data.get('box_num')      # номер коробки, введённый пользователем
+#     code         = data.get('code')
+#     user_doc_id  = data.get('delivery_id')  # номер поставки, введённый пользователем
+#     user_box_num = data.get('box_num')      # номер коробки, введённый пользователем
 
-    if not code:
-        return jsonify({'status': 'error', 'message': 'No code provided'}), 400
-    if not user_doc_id or not user_box_num:
-        return jsonify({'status': 'error', 'message': 'Не указаны поставка или коробка!'}), 400
+#     if not code:
+#         return jsonify({'status': 'error', 'message': 'No code provided'}), 400
+#     if not user_doc_id or not user_box_num:
+#         return jsonify({'status': 'error', 'message': 'Не указаны поставка или коробка!'}), 400
 
-    who = session.get('who', 'UNKNOWN')
+#     who = session.get('who', 'UNKNOWN')
 
-    conn = connect_to_db()
-    if not conn:
-        return jsonify({'status': 'error', 'message': 'DB connection failed'}), 500
+#     conn = connect_to_db()
+#     if not conn:
+#         return jsonify({'status': 'error', 'message': 'DB connection failed'}), 500
 
-    try:
-        cursor = conn.cursor()
+#     try:
+#         cursor = conn.cursor()
 
-        # 1) Ищем код в DITE_CM_GTIN_Codes_v2
-        cursor.execute("""
-            SELECT ID, ID_Documents, CasesNum
-            FROM DITE_CM_GTIN_Codes_v2
-            WHERE Codes = ?
-        """, (code,))
-        row_v2 = cursor.fetchone()
-        if not row_v2:
-            # Если хотим также искать в старой DITE_CM_GTIN_Codes:
-            cursor.execute("""
-                SELECT ID
-                FROM DITE_CM_GTIN_Codes
-                WHERE Codes = ?
-            """, (code,))
-            row_old = cursor.fetchone()
-            if not row_old:
-                return jsonify({
-                    'status': 'error',
-                    'message': 'Честный знак не найден ни в DITE_CM_GTIN_Codes_v2, ни в DITE_CM_GTIN_Codes!'
-                }), 400
-            # Нашли в старой таблице
-            found_in = 'old'
-            id_codes = None
-            doc_id   = None
-            cases_num= None
-        else:
-            found_in = 'v2'
-            id_codes  = row_v2[0]  # PK
-            doc_id    = row_v2[1]  # ID_Documents (номер поставки в базе)
-            cases_num = row_v2[2]  # CasesNum (номер коробки в базе)
+#         # 1) Ищем код в DITE_CM_GTIN_Codes_v2
+#         cursor.execute("""
+#             SELECT ID, ID_Documents, CasesNum
+#             FROM DITE_CM_GTIN_Codes_v2
+#             WHERE Codes = ?
+#         """, (code,))
+#         row_v2 = cursor.fetchone()
+#         if not row_v2:
+#             # Если хотим также искать в старой DITE_CM_GTIN_Codes:
+#             cursor.execute("""
+#                 SELECT ID
+#                 FROM DITE_CM_GTIN_Codes
+#                 WHERE Codes = ?
+#             """, (code,))
+#             row_old = cursor.fetchone()
+#             if not row_old:
+#                 return jsonify({
+#                     'status': 'error',
+#                     'message': 'Честный знак не найден ни в DITE_CM_GTIN_Codes_v2, ни в DITE_CM_GTIN_Codes!'
+#                 }), 400
+#             # Нашли в старой таблице
+#             found_in = 'old'
+#             id_codes = None
+#             doc_id   = None
+#             cases_num= None
+#         else:
+#             found_in = 'v2'
+#             id_codes  = row_v2[0]  # PK
+#             doc_id    = row_v2[1]  # ID_Documents (номер поставки в базе)
+#             cases_num = row_v2[2]  # CasesNum (номер коробки в базе)
 
-        # 2) Сравниваем doc_id и cases_num с тем, что ввёл пользователь
-        #    Нужно, чтобы str(doc_id) == user_doc_id, str(cases_num) == user_box_num
-        if doc_id is None or cases_num is None:
-            return jsonify({
-                'status': 'error',
-                'message': 'В базе нет данных о поставке/коробке (старый код?).'
-            }), 400
+#         # 2) Сравниваем doc_id и cases_num с тем, что ввёл пользователь
+#         #    Нужно, чтобы str(doc_id) == user_doc_id, str(cases_num) == user_box_num
+#         if doc_id is None or cases_num is None:
+#             return jsonify({
+#                 'status': 'error',
+#                 'message': 'В базе нет данных о поставке/коробке (старый код?).'
+#             }), 400
 
-        if str(doc_id) != str(user_doc_id):
-            return jsonify({
-                'status': 'error',
-                'message': 'Товар принадлежит другой поставке!'
-            }), 400
+#         if str(doc_id) != str(user_doc_id):
+#             return jsonify({
+#                 'status': 'error',
+#                 'message': 'Товар принадлежит другой поставке!'
+#             }), 400
 
-        if str(cases_num) != str(user_box_num):
-            return jsonify({
-                'status': 'error',
-                'message': 'Товар принадлежит другой коробке!'
-            }), 400
+#         if str(cases_num) != str(user_box_num):
+#             return jsonify({
+#                 'status': 'error',
+#                 'message': 'Товар принадлежит другой коробке!'
+#             }), 400
 
-        # 3) Проверяем, не сканировали ли уже этот код (для данной поставки/коробки)
-        #    Поскольку мы не используем ID_Case, будем считать, что "уже сканировали",
-        #    если NumCase=user_box_num и ID_DeliveriesMP=user_doc_id.
-        cursor.execute("""
-            SELECT ID
-            FROM DITE_Deliveries_MPScans
-            WHERE ID_Product = ?
-              AND NumCase = ?
-              AND ID_DeliveriesMP = ?
-        """, (code, user_box_num, user_doc_id))
-        row_scanned = cursor.fetchone()
-        if row_scanned:
-            return jsonify({
-                'status': 'error',
-                'message': 'Этот честный знак уже отсканирован для данной поставки/коробки!'
-            }), 400
+#         # 3) Проверяем, не сканировали ли уже этот код (для данной поставки/коробки)
+#         #    Поскольку мы не используем ID_Case, будем считать, что "уже сканировали",
+#         #    если NumCase=user_box_num и ID_DeliveriesMP=user_doc_id.
+#         cursor.execute("""
+#             SELECT ID
+#             FROM DITE_Deliveries_MPScans
+#             WHERE ID_Product = ?
+#               AND NumCase = ?
+#               AND ID_DeliveriesMP = ?
+#         """, (code, user_box_num, user_doc_id))
+#         row_scanned = cursor.fetchone()
+#         if row_scanned:
+#             return jsonify({
+#                 'status': 'error',
+#                 'message': 'Этот честный знак уже отсканирован для данной поставки/коробки!'
+#             }), 400
 
-        # 4) Вставляем запись:
-        #    ID_Case = NULL, NumCase = user_box_num, ID_DeliveriesMP = user_doc_id
-        now = datetime.now()
-        date_str = now.strftime('%Y-%m-%d')
-        time_str = now.strftime('%H:%M:%S')
+#         # 4) Вставляем запись:
+#         #    ID_Case = NULL, NumCase = user_box_num, ID_DeliveriesMP = user_doc_id
+#         now = datetime.now()
+#         date_str = now.strftime('%Y-%m-%d')
+#         time_str = now.strftime('%H:%M:%S')
 
-        cursor.execute("""
-            INSERT INTO DITE_Deliveries_MPScans
-            (ID_Case, NumCase, ID_DeliveriesMP, Who,
-             DateScan, TimeScan, ID_Product, Scan_Status,
-             ID_Codes)
-            VALUES (NULL, ?, ?, ?, ?, ?, ?, 'OK', ?)
-        """, (
-            user_box_num,
-            user_doc_id,
-            who,
-            date_str,
-            time_str,
-            code,
-            id_codes
-        ))
+#         cursor.execute("""
+#             INSERT INTO DITE_Deliveries_MPScans
+#             (ID_Case, NumCase, ID_DeliveriesMP, Who,
+#              DateScan, TimeScan, ID_Product, Scan_Status,
+#              ID_Codes)
+#             VALUES (NULL, ?, ?, ?, ?, ?, ?, 'OK', ?)
+#         """, (
+#             user_box_num,
+#             user_doc_id,
+#             who,
+#             date_str,
+#             time_str,
+#             code,
+#             id_codes
+#         ))
 
-        conn.commit()
-        return jsonify({
-            'status': 'success',
-            'message': f'Честный знак успешно принят (найден в {found_in})'
-        }), 200
+#         conn.commit()
+#         return jsonify({
+#             'status': 'success',
+#             'message': f'Честный знак успешно принят (найден в {found_in})'
+#         }), 200
 
-    except Exception as e:
-        conn.rollback()
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-    finally:
-        conn.close()
+#     except Exception as e:
+#         conn.rollback()
+#         return jsonify({'status': 'error', 'message': str(e)}), 500
+#     finally:
+#         conn.close()
 
 
 
@@ -371,6 +784,43 @@ def boxes():
     return render_template('boxes.html',
                            delivery_id=delivery_id,
                            boxes=boxes_list)
+
+@app.route('/boxes/print_box', methods=['POST'])
+def boxes_print_box():
+    data = request.get_json() or {}
+    count = int(data.get('count', 1))
+    # Получаем delivery_id из сессии (ты его туда уже кладёшь, если смотришь конкретную поставку!)
+    delivery_id = session.get('delivery_id')
+    who_print = session.get('who', 'unknown')
+    if not delivery_id:
+        return jsonify({'error': 'Нет номера поставки'}), 400
+
+    conn = connect_to_db()
+    try:
+        cur = conn.cursor()
+        now = datetime.now()
+        cur.execute("""
+            INSERT INTO DITE_Queue_CasePrint_copy1
+                (NumDocument, TypeDocument, CountCase, WhoPrint, DatePrint, TimePrint)
+            VALUES (?, 'МП', ?, ?, ?, ?)
+        """, (
+            delivery_id,
+            count,
+            who_print,
+            now.strftime("%Y-%m-%d"),
+            now.strftime("%H:%M:%S"),
+        ))
+        conn.commit()
+        return jsonify({'status': 'success'}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+
+    finally:
+        conn.close()
+
+
 
 # --------------------------
 # 4) Просмотр/сканирование конкретной коробки (scan_box.html)
@@ -1594,16 +2044,29 @@ def release_and_queues():
     if prev_id:
         conn = connect_to_db()
         cursor = conn.cursor()
+        # 1) Узнаём, есть ли подтверждённые задачи по заказу
         cursor.execute("""
-            UPDATE DITE_DeliveriesOrders
-            SET WhoReserved  = NULL,
-                DateReserved = NULL,
-                TimeReserved = NULL
-            WHERE ID = ? AND WhoReserved = ?
-        """, (prev_id, session['who']))
-        conn.commit()
+          SELECT COUNT(*)
+            FROM DITE_DeliveriesTasks
+           WHERE ID_Orders    = ?
+             AND (WhoConfrim  IS NOT NULL
+                  OR DateConfrim IS NOT NULL
+                  OR TimeConfrim IS NOT NULL)
+        """, (prev_id,))
+        done_count = cursor.fetchone()[0]
+        # 2) Если НИКАКИХ не было — снимаем бронь, иначе оставляем
+        if done_count == 0:
+            cursor.execute("""
+                UPDATE DITE_DeliveriesOrders
+                   SET WhoReserved  = NULL,
+                       DateReserved = NULL,
+                       TimeReserved = NULL
+                 WHERE ID = ? AND WhoReserved = ?
+            """, (prev_id, session['who']))
+            conn.commit()
         conn.close()
     return redirect(url_for('queues'))
+
 
 from flask import abort, jsonify, redirect, url_for, session, request
 from datetime import datetime
@@ -1825,17 +2288,37 @@ def transfer():
         session['current_delivery_id'] = id_deliveries
 
         cursor.execute("""
-            SELECT ID, Types, Froms, Tho, Articul, HS, Sizes, Heights, HeightsRus, Counts
+            SELECT COUNT(*)
             FROM DITE_DeliveriesTasks
-            WHERE ID_Deliveries = ? AND ID_Orders = ?
-              AND ISNULL(Status, '') = ' '
-              AND ISNULL(WhoConfrim, '') = ''
-              AND ISNULL(DateConfrim, '') = ''
-              AND ISNULL(TimeConfrim, '') = ''
-        """, (id_deliveries, id_orders))
-        rows = cursor.fetchall()
-        if not rows:
-            return "Все задачи уже выполнены", 200
+            WHERE ID_Orders = ? AND ID_Deliveries = ?
+            AND LTRIM(RTRIM(ISNULL(Status,''))) = ''
+            AND WhoConfrim IS NULL
+            AND DateConfrim IS NULL
+            AND TimeConfrim IS NULL
+        """, (id_orders, id_deliveries))
+        remaining = cursor.fetchone()[0] or 0
+
+        if remaining == 0:
+            # Последняя задача только что закрылась — резервируем заказ и уходим в order_details!
+            cursor.execute("""
+                UPDATE DITE_DeliveriesOrders
+                SET WhoReserved  = ?,
+                    DateReserved = ?,
+                    TimeReserved = ?
+                WHERE ID = ?
+                AND (WhoReserved IS NULL OR WhoReserved = '')
+            """, (
+                session['who'],
+                datetime.now().strftime('%Y-%m-%d'),
+                datetime.now().strftime('%H:%M:%S'),
+                id_orders
+            ))
+            conn.commit()
+            return redirect(url_for('order_details',
+                                order_id=id_orders,
+                                id_deliveries=id_deliveries,
+                                queue=queue))
+
 
 
         cursor.execute("""
@@ -2254,13 +2737,59 @@ def shop_queue():
                 break
         row = cursor.fetchone()
         if not row:
-            flash(f"В очереди «{turn}» больше нет заданий.", "info")
-            return redirect(url_for('queues'))
+            # Нет задач — переходим в order_details (берём последние order_id и delivery_id из сессии)
+            prev_order_id     = session.get('current_order_id')
+            prev_delivery_id  = session.get('current_delivery_id')
+            return redirect(url_for(
+                'order_details',
+                order_id=prev_order_id,
+                id_deliveries=prev_delivery_id,
+                queue=turn  # turn = "На МП" или "Перемещение"
+            ))
 
-        columns     = [col[0] for col in cursor.description]
-        data        = dict(zip(columns, row))
+
+        columns = [col[0] for col in cursor.description]
+        data    = dict(zip(columns, row))
+
+        columns = [col[0] for col in cursor.description]
+        data    = dict(zip(columns, row))
         order_id    = data['ID']
         delivery_id = data['ID_Deliveries']
+        session['current_order_id']    = order_id
+        session['current_delivery_id'] = delivery_id
+
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM DITE_DeliveriesTasks
+            WHERE ID_Orders = ? AND ID_Deliveries = ?
+            AND LTRIM(RTRIM(ISNULL(Status,''))) = ''
+            AND WhoConfrim IS NULL
+            AND DateConfrim IS NULL
+            AND TimeConfrim IS NULL
+        """, (order_id, delivery_id))
+        remaining = cursor.fetchone()[0] or 0
+
+        if remaining == 0:
+            cursor.execute("""
+                UPDATE DITE_DeliveriesOrders
+                SET WhoReserved  = ?,
+                    DateReserved = ?,
+                    TimeReserved = ?
+                WHERE ID = ?
+                AND (WhoReserved IS NULL OR WhoReserved = '')
+            """, (
+                session['who'],
+                datetime.now().strftime('%Y-%m-%d'),
+                datetime.now().strftime('%H:%M:%S'),
+                order_id
+            ))
+            conn.commit()
+            return redirect(url_for(
+                'order_details',
+                order_id=order_id,
+                id_deliveries=delivery_id,
+                queue=turn
+            ))
 
         # 3) Выбираем все незавершённые задачи
         cursor.execute("""
@@ -2354,10 +2883,15 @@ def shop_queue():
         # 8) Сохраняем в сессии для /print_box
         session['shop_queue_task'] = task
 
+        tho = task.get('target_cell', '') or task.get('Tho', '') or ''
+        tho_clean = tho.replace('_', ' ')
+        queue_label = f"{tho_clean.strip()}"
+
         return render_template(
             'shop_queue.html',
             task=task,
             queue=turn,
+            queue_label=queue_label,
             remaining_tasks=remaining
         )
 
@@ -2458,17 +2992,25 @@ def shop_queue_scan():
                 return jsonify({'status':'error','message':'Коробка не из текущей поставки'}), 400
             scanned = session.get('scanned_items', [])
             # присваиваем коробку всем ранее отсканированным товарам без box
+
+            # присваиваем коробку всем ранее отсканированным товарам без box
             for itm in scanned:
                 if itm.get('box') is None:
                     itm['box']     = code
                     itm['case_id'] = box_id
                     itm['num_case']= num_case
-            session['scanned_items'] = scanned
+            session['scanned_items'] = scanned    # ← после этой строки вставляем
+            cases = session.get('shop_queue_cases', [])
+            cases.append(code)
+            session['shop_queue_cases'] = cases
             return jsonify({
                 'status':'success',
-                'type':'box',
-                'record': {'boxId': box_id, 'innerBarcode': code, 'caseNum': num_case},
-                'items': scanned
+                'type':'box',        # или как у вас там
+                'record': {
+                    'box': code,
+                    'case_id': box_id,
+                    'num_case': num_case
+                }
             }), 200
 
         # 3) Если ни товар, ни коробка
@@ -2540,7 +3082,7 @@ def shop_queue_print_box():
         cur = conn.cursor()
         now = datetime.now()
         cur.execute("""
-            INSERT INTO DITE_Queue_CasePrint_copy1
+            INSERT INTO DITE_Queue_CasePrint
               (NumDocument, TypeDocument, CountCase, WhoPrint, DatePrint, TimePrint)
             VALUES (?, 'МП', ?, ?, ?, ?)
         """, (
@@ -2580,21 +3122,28 @@ def shop_queue_update_task():
         return jsonify({'status':'error','message':'Нет данных'}), 400
 
     conn = connect_to_db()
+
+
+
     try:
         cur = conn.cursor()
         scans = session.get('scanned_items', [])
         now = datetime.now()
         date_str = now.strftime("%Y-%m-%d")
         time_str = now.strftime("%H:%M:%S")
+        seconds_since_midnight = now.hour * 3600 + now.minute * 60 + now.second
+        cur.execute("SELECT ID FROM DITE_Logins WHERE Surname_N_LN = ?", (session['who'],))
+        row = cur.fetchone()
+        who_id = row[0]
 
         # 1) Обновляем задачу
         cur.execute("""
             EXEC [u1603085_Maxim].[pr2_ServiceBroker_СкладскаяЗадача_Очередь_ОбновитьЗадачу]
                 @idTask=?, @whoUpdate=?, @whoIdUpdate=?, @counts=?, @dateUpdate=?, @timeUpdate=?
         """, (
-            task['task_number'], session['who'], session['who_id'],
-            len(items), date_str, time_str
-        ))
+                task['task_number'], session['who'],who_id,  # ← session['who_id'] не существует! :contentReference[oaicite:2]{index=2}:contentReference[oaicite:3]{index=3}
+                len(items), date_str, time_str
+            ))
 
         # 2) Вставляем в DITE_Deliveries_MPArticulsToTPositionsCase_v2
         from collections import defaultdict
@@ -2605,12 +3154,24 @@ def shop_queue_update_task():
         for box_barcode, cnt in groups.items():
             # находим ID коробки
             cur.execute(
-                "SELECT ID FROM DITE_Queue_CasePrint WHERE InnerBarcode = ?",
+                "SELECT ID FROM DITE_Deliveries_MPCase_v2 WHERE InnerBarcode = ?",
                 (box_barcode,)
             )
             row = cur.fetchone()
+            
             id_case = row[0] if row else None
+            cur.execute(
+                "SELECT ID_DeliveriesMP "
+                "FROM DITE_Deliveries_MPArticulsToPositions_v2 "
+                "WHERE ID_Task = ?",
+                (task['task_number'],)
+            )
+            row = cur.fetchone()
 
+
+            if not row:
+                return jsonify({'status':'error', 'message':'Не найдена исходная запись для задачи'}), 400
+            shipment_number = row[0]
             cur.execute("""
                 INSERT INTO DITE_Deliveries_MPArticulsToTPositionsCase_v2
                   (Counts, ID_Case, WhoCreate, DateCreate, TimeCreate,
@@ -2620,7 +3181,7 @@ def shop_queue_update_task():
             """, (
                 cnt, id_case, session['who'],
                 date_str, time_str,
-                task['id_deliveries'],  # номер поставки
+                shipment_number,  # номер поставки
                 task['task_number']
             ))
         for scan in scans:
@@ -2632,7 +3193,7 @@ def shop_queue_update_task():
                 scan['qrcode'],              # отсканированный QR-код товара
                 scan['date_scan'],           # дата скана из session
                 scan['time_scan'],           # время скана из session
-                now.strftime("%H:%M:%S"),    # фактическое время логирования
+                seconds_since_midnight,     # фактическое время логирования
                 task['task_number'],         # ID задачи
                 task['id_orders'],           # ID заказа
                 task['id_deliveries']        # ID поставки
@@ -2655,7 +3216,6 @@ def shop_queue_update_task():
         conn.close()
 
 
-
 @app.route('/shop_queue/delete', methods=['POST'])
 def delete_scanned_item():
     index = request.get_json().get('index')
@@ -2668,6 +3228,20 @@ def delete_scanned_item():
     except:
         pass
     return jsonify({'items': scanned})
+
+
+@app.route('/shop_queue/clear_scans', methods=['POST'])
+def shop_queue_clear_scans():
+    # Сброс товаров и коробок при переходе к новому таску
+    session.pop('scanned_items',   None)
+    session.pop('shop_queue_cases', None)
+    session.pop('cycles', None)
+    session.pop('current_items', None)
+    return jsonify({'status':'success'}), 200
+
+
+
+
 
 
 import logging
@@ -2767,11 +3341,6 @@ def split_order():
 
 
 
-
-
-
-
-
 from flask import jsonify
 
 @app.route('/clear_scans', methods=['POST'])
@@ -2793,8 +3362,586 @@ def logout():
     session.clear()  # очищаем все данные сессии
     return redirect(url_for('login'))
 
+@app.route('/priemka_queue', methods=['GET'])
+def priemka_queue():
+    # 1) Авторизация
+    if 'who' not in session:
+        return redirect(url_for('login'))
+
+    turn = 'Приёмка'
+    who = session['who']
+
+    conn = connect_to_db()
+    cursor = conn.cursor()
+    try:
+        # 2) Мониторинг очереди (ServiceBroker)
+        cursor.execute(
+            "EXEC [u1603085_Maxim].[pr2_Мониторинг_Очереди_Copy] @Turn = ?, @Who = ?",
+            (turn, who)
+        )
+        # собрать первый SELECT
+        while cursor.description is None:
+            if not cursor.nextset():
+                break
+        row = cursor.fetchone()
+        if not row:
+            # Нет задач — переходим в order_details (берём последние order_id и delivery_id из сессии)
+            prev_order_id = session.get('current_order_id')
+            prev_delivery_id = session.get('current_delivery_id')
+            return redirect(url_for(
+                'order_details',
+                order_id=prev_order_id,
+                id_deliveries=prev_delivery_id,
+                queue=turn
+            ))
+
+        columns = [col[0] for col in cursor.description]
+        data = dict(zip(columns, row))
+        order_id = data['ID']
+        delivery_id = data['ID_Deliveries']
+        session['current_order_id'] = order_id
+        session['current_delivery_id'] = delivery_id
+
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM DITE_DeliveriesTasks
+            WHERE ID_Orders = ? AND ID_Deliveries = ?
+            AND LTRIM(RTRIM(ISNULL(Status,''))) = ''
+            AND WhoConfrim IS NULL
+            AND DateConfrim IS NULL
+            AND TimeConfrim IS NULL
+        """, (order_id, delivery_id))
+        remaining = cursor.fetchone()[0] or 0
+
+        if remaining == 0:
+            cursor.execute("""
+                UPDATE DITE_DeliveriesOrders
+                SET WhoReserved = ?,
+                    DateReserved = ?,
+                    TimeReserved = ?
+                WHERE ID = ?
+                AND (WhoReserved IS NULL OR WhoReserved = '')
+            """, (
+                session['who'],
+                datetime.now().strftime('%Y-%m-%d'),
+                datetime.now().strftime('%H:%M:%S'),
+                order_id
+            ))
+            conn.commit()
+            return redirect(url_for(
+                'order_details',
+                order_id=order_id,
+                id_deliveries=delivery_id,
+                queue=turn
+            ))
+
+        # 3) Выбираем все незавершённые задачи
+        
+        cursor.execute("""
+            SELECT 
+                t.ID as task_number,
+                t.Types as types,
+                t.Froms as from_cell,
+                t.Tho as target_cell,
+                t.Articul as articul,
+                t.HS as hs,
+                t.Sizes as sizes,
+                t.Heights as heights,
+                t.HeightsRus as heightsrus,
+                t.Counts as counts,
+                t.ID_Orders as id_orders,
+                t.ID_Deliveries as id_deliveries
+            FROM DITE_DeliveriesTasks t
+            WHERE t.ID_Deliveries = ? AND t.ID_Orders = ?
+            AND LTRIM(RTRIM(ISNULL(Status,''))) = ''
+            AND WhoConfrim IS NULL
+            AND DateConfrim IS NULL
+            AND TimeConfrim IS NULL
+        """, (delivery_id, order_id))
+        rows = cursor.fetchall()
+        if not rows:
+            flash('Все задачи выполнены.', 'success')
+            return redirect(url_for('order_details',
+                                  order_id=order_id,
+                                  id_deliveries=delivery_id))
+
+        # 4) Берём первую задачу
+        task = dict(zip([column[0] for column in cursor.description], rows[0]))
+
+        # 5) Дополняем информацию об артикуле
+        cursor.execute("""
+            SELECT Gender, ID 
+            FROM DITE_Articuls 
+            WHERE Articul = ?
+        """, (task['articul'],))
+        row = cursor.fetchone()
+        gender, id_art = (row[0], row[1]) if row else ("", None)
+        model, color = "", ""
+
+        if id_art:
+            cursor.execute("""
+                SELECT Models, ID 
+                FROM DITE_Articuls_Models 
+                WHERE ID_Articuls = ?
+            """, (id_art,))
+            m = cursor.fetchone()
+            if m:
+                model, m_id = m
+                cursor.execute("""
+                    SELECT Color 
+                    FROM DITE_Cloaths 
+                    WHERE ID = ?
+                """, (m_id,))
+                c = cursor.fetchone()
+                color = c[0] if c else ''
+        task.update({'gender': gender, 'model': model, 'color': color})
+
+        # 6) Считаем, сколько ещё осталось
+        remaining = get_remaining_tasks_count(order_id, delivery_id)
+
+        # 7) Очищаем сканы
+        session['priemka_queue_scans'] = []
+        session['priemka_queue_source'] = None
+        session['priemka_queue_target'] = None
+
+        return render_template(
+            'priemka_queue.html',
+            task=task,
+            queue=turn,
+            remaining_tasks=remaining
+        )
+
+    except Exception as e:
+        logger.exception("priemka_queue: ошибка")
+        return f"Ошибка: {e}", 500
+
+    finally:
+        conn.close()
+
+@app.route('/priemka_queue/validate_source', methods=['POST'])
+def priemka_queue_validate_source():
+    if 'who' not in session:
+        return jsonify({'status': 'error', 'message': 'Необходима авторизация'})
+
+    data = request.get_json()
+    box_code = data.get('box_code')
+
+    if not box_code:
+        return jsonify({'status': 'error', 'message': 'Не указан код коробки'})
+
+    cursor = connect_to_db().cursor()
+    
+    # Проверяем коробку по Barcode в DITE_Deliveries_Cases
+    cursor.execute("""
+        SELECT ID, ID_Deliveries, NumCase, Barcode
+        FROM DITE_Deliveries_Cases
+        WHERE Barcode = ?
+    """, box_code)
+    
+    box = cursor.fetchone()
+    
+    if not box:
+        return jsonify({'status': 'error', 'message': 'Коробка не найдена'})
+
+    # Сохраняем информацию о коробке в сессии
+    session['priemka_queue_source'] = {
+        'id': box.ID,
+        'delivery_id': box.ID_Deliveries,
+        'num_case': box.NumCase,
+        'barcode': box.Barcode
+    }
+
+    return jsonify({
+        'status': 'success',
+        'message': 'Коробка-источник подтверждена',
+        'source': box.NumCase,
+        'barcode': box.Barcode
+    })
+
+@app.route('/priemka_queue/validate_target', methods=['POST'])
+def priemka_queue_validate_target():
+    if 'who' not in session:
+        return jsonify({'status': 'error', 'message': 'Необходима авторизация'})
+
+    data = request.get_json()
+    code = data.get('code')
+
+    if not code:
+        return jsonify({'status': 'error', 'message': 'Не указан код'})
+
+    cursor = connect_to_db().cursor()
+
+    # 1) Пробуем как InnerBarcode (коробка МП)
+    cursor.execute("""
+        SELECT ID, ID_DeliveriesMP, NumCase
+        FROM DITE_Deliveries_MPCase_v2
+        WHERE InnerBarcode = ?
+    """, code)
+    row = cursor.fetchone()
+    if row:
+        box_id, mp_id, num_case = row
+        session['priemka_queue_target'] = {
+            'type': 'box',
+            'id': box_id,
+            'code': code,
+            'num_case': num_case,
+            'mp_id': mp_id
+        }
+        return jsonify({
+            'status': 'success',
+            'type': 'box',
+            'record': {
+                'box': code,
+                'case_id': box_id,
+                'num_case': num_case,
+                'mp_id': mp_id
+            }
+        })
+
+    # 2) Пробуем как ячейку (Place)
+    cursor.execute("""
+        SELECT Place 
+        FROM DITE_DivisionsPlaces 
+        WHERE Place = ?
+    """, code)
+    cell = cursor.fetchone()
+    if cell:
+        session['priemka_queue_target'] = {
+            'type': 'cell',
+            'code': code
+        }
+        return jsonify({
+            'status': 'success',
+            'type': 'cell',
+            'record': {
+                'cell': code
+            }
+        })
+
+    # 3) Пробуем как коробку по NumCase (старый вариант)
+    cursor.execute("""
+        SELECT ID, NumCase
+        FROM DITE_Deliveries_Cases
+        WHERE NumCase = ?
+    """, code)
+    box = cursor.fetchone()
+    if box:
+        session['priemka_queue_target'] = {
+            'type': 'box',
+            'id': box.ID,
+            'code': code,
+            'num_case': box.NumCase
+        }
+        return jsonify({
+            'status': 'success',
+            'type': 'box',
+            'record': {
+                'box': code,
+                'case_id': box.ID,
+                'num_case': box.NumCase
+            }
+        })
+
+    return jsonify({
+        'status': 'error',
+        'message': 'Неверный код ячейки или коробки'
+    })
+
+@app.route('/priemka_queue/scan', methods=['POST'])
+def priemka_queue_scan():
+    if 'who' not in session:
+        return jsonify({'status': 'error', 'message': 'Необходима авторизация'})
+
+    data = request.get_json()
+    code = data.get('code')
+    source_box = data.get('source_box')
+    target = data.get('target')  # Опциональный параметр - целевое место
+
+    if not code:
+        return jsonify({'status': 'error', 'message': 'Не указан код товара'})
+    
+    if not source_box:
+        return jsonify({'status': 'error', 'message': 'Не указана коробка-источник'})
+
+    conn = connect_to_db()
+    try:
+        cursor = conn.cursor()
+        
+        # Если передан target, проверяем его валидность
+        if target:
+            # Проверяем ячейку
+            cursor.execute("""
+                SELECT Place 
+                FROM DITE_DivisionsPlaces 
+                WHERE Place = ?
+            """, target)
+            
+            is_cell = cursor.fetchone() is not None
+            
+            if not is_cell:
+                # Если не ячейка, проверяем коробку
+                cursor.execute("""
+                    SELECT ID
+                    FROM DITE_Deliveries_Cases
+                    WHERE NumCase = ?
+                """, target)
+                
+                if not cursor.fetchone():
+                    return jsonify({'status': 'error', 'message': 'Неверный код целевого места'})
+        
+        # 1) Пытаемся считать как товар
+        cursor.execute(
+            "SELECT Articul, HS FROM DITE_Articuls_LabelsPrint WHERE QrCode = ?",
+            (code,)
+        )
+        row = cursor.fetchone()
+        if row:
+            articul, hs = row
+            
+            # Получаем ID коробки-источника
+            cursor.execute("""
+                SELECT ID 
+                FROM DITE_Deliveries_Cases 
+                WHERE Barcode = ?
+            """, source_box)
+            source_box_row = cursor.fetchone()
+            if not source_box_row:
+                return jsonify({'status': 'error', 'message': 'Коробка-источник не найдена'})
+            
+            source_box_id = source_box_row.ID
+
+            # Проверяем, что товар находится в коробке-источнике через DITE_Deliveries_Scans
+            cursor.execute("""
+                SELECT s.ID
+                FROM DITE_Deliveries_Scans s
+                WHERE s.QrCode = ? AND s.ID_Case = ?
+            """, code, source_box_id)
+            
+            if not cursor.fetchone():
+                return jsonify({'status': 'error', 'message': 'Товар не найден в указанной коробке'})
+
+            # Проверяем, не был ли этот товар уже отсканирован
+            scans = session.get('priemka_queue_scans', [])
+            if any(s['Uniq'] == code for s in scans):
+                return jsonify({'status': 'error', 'message': 'Этот товар уже отсканирован'})
+
+            # Добавляем скан
+            scan_data = {
+                'Uniq': code,
+                'articul': articul,
+                'hs': hs,
+                'code': code,
+                'target': session.get('priemka_queue_target', {}).get('code', '')
+            }
+            scans.append(scan_data)
+            session['priemka_queue_scans'] = scans
+
+            # Если был передан target, сразу обновляем задачу
+            if target:
+                try:
+                    cursor.execute("""
+                        UPDATE DITE_Deliveries_Scans
+                        SET Place = ?
+                        WHERE QrCode = ? AND ID_Case = ?
+                    """, target, code, source_box_id)
+                    cursor.commit()
+                except Exception as e:
+                    cursor.rollback()
+                    return jsonify({'status': 'error', 'message': f'Ошибка обновления места: {str(e)}'})
+
+            return jsonify({
+                'status': 'success',
+                'type': 'item',
+                'record': scan_data,
+                'target_updated': bool(target)
+            })
+
+        return jsonify({'status': 'error', 'message': 'Неподдерживаемый штрихкод'})
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'status': 'error', 'message': str(e)})
+    finally:
+        conn.close()
+
+@app.route('/priemka_queue/print_box', methods=['POST'])
+def priemka_queue_print_box():
+    if 'who' not in session:
+        return jsonify({'status': 'error', 'message': 'Необходима авторизация'})
+
+    source = session.get('priemka_queue_source')
+    if not source:
+        return jsonify({'status': 'error', 'message': 'Источник не определен'})
+
+    cursor = connect_to_db().cursor()
+    
+    try:
+        # Получаем следующий номер коробки
+        cursor.execute("""
+            SELECT ISNULL(MAX(CAST(SUBSTRING(Num_Case, 2, LEN(Num_Case)-1) AS INT)), 0) + 1
+            FROM DITE_Deliveries_Cases
+            WHERE Num_Case LIKE 'B%'
+        """)
+        next_num = cursor.fetchone()[0]
+        box_number = f'B{next_num}'
+
+        # Создаем новую коробку
+        cursor.execute("""
+            INSERT INTO DITE_Deliveries_Cases (ID_Deliveries, Num_Case, DateCreate, WhoCreate)
+            VALUES (?, ?, GETDATE(), ?)
+        """, source['delivery_id'], box_number, session['who'])
+        cursor.commit()
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Этикетка {box_number} отправлена на печать'
+        })
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        })
+
+@app.route('/priemka_queue/clear_scans', methods=['POST'])
+def priemka_queue_clear_scans():
+    # Очищаем все данные сессии для приемки-очереди
+    session['priemka_queue_scans'] = []
+    session['priemka_queue_source'] = None
+    session['priemka_queue_target'] = None
+    return jsonify({'status': 'success'})
+
+@app.route('/priemka_queue/scanned_count', methods=['GET'])
+def priemka_queue_scanned_count():
+    scans = session.get('priemka_queue_scans', [])
+    return jsonify({'count': len(scans)})
+
+@app.route('/priemka_queue/delete', methods=['POST'])
+def priemka_queue_delete():
+    if 'who' not in session:
+        return jsonify({'status': 'error', 'message': 'Необходима авторизация'})
+
+    data = request.get_json()
+    code = data.get('code')
+
+    if not code:
+        return jsonify({'status': 'error', 'message': 'Не указан код'})
+
+    scans = session.get('priemka_queue_scans', [])
+    scans = [s for s in scans if s['Uniq'] != code]
+    session['priemka_queue_scans'] = scans
+
+    return jsonify({
+        'status': 'success',
+        'message': 'Товар удален',
+        'scanned_count': len(scans)
+    })
+
+@app.route('/priemka_queue/update_task', methods=['POST'])
+def priemka_queue_update_task():
+    if 'who' not in session:
+        return jsonify({'status': 'error', 'message': 'Необходима авторизация'})
+
+    data = request.get_json()
+    items = data.get('items', [])
+    target = data.get('target')
+    source_box = data.get('source_box')
+
+    if not items:
+        return jsonify({'status': 'error', 'message': 'Нет отсканированных товаров'})
+    
+    if not target:
+        return jsonify({'status': 'error', 'message': 'Не указано целевое место'})
+    
+    if not source_box:
+        return jsonify({'status': 'error', 'message': 'Не указана коробка-источник'})
+
+    conn = connect_to_db()
+    cursor = conn.cursor()
+    
+    try:
+        # Получаем ID коробки-источника
+        cursor.execute("""
+            SELECT ID 
+            FROM DITE_Deliveries_Cases 
+            WHERE Barcode = ?
+        """, source_box)
+        source_box_id = cursor.fetchone().ID
+
+        # Проверяем тип целевого места
+        cursor.execute("""
+            SELECT Place 
+            FROM DITE_DivisionsPlaces 
+            WHERE Place = ?
+        """, target)
+        
+        is_cell = cursor.fetchone() is not None
+
+        if is_cell:
+            # Если целевое место - ячейка, обновляем место хранения товаров
+            for item in items:
+                cursor.execute("""
+                    UPDATE DITE_Deliveries_MPArticulsToTPositionsCase_v2
+                    SET Place = ?
+                    WHERE Uniq = ? AND ID_Case = ?
+                """, target, item['Uniq'], source_box_id)
+        else:
+            # Если целевое место - коробка, получаем её ID
+            cursor.execute("""
+                SELECT ID 
+                FROM DITE_Deliveries_Cases 
+                WHERE Barcode = ?
+            """, target)
+            target_box = cursor.fetchone()
+            
+            if not target_box:
+                return jsonify({'status': 'error', 'message': 'Целевая коробка не найдена'})
+
+            # Перемещаем товары в целевую коробку
+            for item in items:
+                cursor.execute("""
+                    UPDATE DITE_Deliveries_MPArticulsToTPositionsCase_v2
+                    SET ID_Case = ?
+                    WHERE Uniq = ? AND ID_Case = ?
+                """, target_box.ID, item['Uniq'], source_box_id)
+
+        conn.commit()
+        
+        # Очищаем данные сессии
+        session['priemka_queue_scans'] = []
+        session['priemka_queue_source'] = None
+        session['priemka_queue_target'] = None
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Задача успешно обновлена'
+        })
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({
+            'status': 'error',
+            'message': f'Ошибка при обновлении задачи: {str(e)}'
+        })
+    finally:
+        conn.close()
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

@@ -1,11 +1,10 @@
-{% extends 'layout.html' %}
-{% block title %}Главное меню{% endblock %}
-{% block content %}
+{% extends 'layout.html' %} {% block title %}Главное меню{% endblock %} {% block
+content %}
 <div class="main-menu-container">
   <h2>Главное меню</h2>
   <div class="menu-buttons">
-    <a href="{{ url_for('delivery') }}" class="menu-button">Поставки</a>
-    <a href="{{ url_for('priemka') }}" class="menu-button">Приёмка</a>
+    <a href="{{ url_for('delivery') }}" class="menu-button">Маркировка МП</a>
+    <a href="{{ url_for('priemka') }}" class="menu-button">Поступление</a>
     <a href="{{ url_for('queues') }}" class="menu-button">Очереди</a>
   </div>
 </div>

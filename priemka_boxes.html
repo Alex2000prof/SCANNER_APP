@@ -1,0 +1,32 @@
+{% extends 'layout.html' %} {% block title %}Приёмка — Коробки поставки №{{
+delivery_id }}{% endblock %} {% block content %}
+
+<h2>Поставка №{{ delivery_id }}</h2>
+<p>Все коробки в этой поставке:</p>
+
+<ul class="box-list">
+  {% for box in boxes %} {% if box.ScanStatus == 'Готово' %} {% set box_class =
+  'completed' %} {% elif box.ScanStatus == 'Частично' %} {% set box_class =
+  'partial' %} {% else %} {% set box_class = '' %} {% endif %}
+
+  <li class="{{ box_class }}">
+    <div class="box-info">
+      <div class="box-title">Коробка №{{ box.NumCase }}</div>
+      <div class="box-count">{{ box.Scanned }} шт.</div>
+    </div>
+    <a
+      class="scan-link"
+      href="{{ url_for('priemka_box_contents', id_case=box.ID) }}"
+    >
+      Содержимое
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+
+{% if current_box_id %}
+<a href="{{ url_for('priemka_scan', id_case=current_box_id) }}" class="back-button">Назад к сканированию</a>
+{% else %}
+<a href="{{ url_for('priemka') }}" class="back-button">Назад к сканированию</a>
+{% endif %}
+{% endblock %}

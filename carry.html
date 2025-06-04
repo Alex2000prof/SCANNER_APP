@@ -112,54 +112,54 @@
 
   // Выполнение переноса товара
   function executeTransfer() {
-    var product = window.carryState.productInfo;
-    var target = window.carryState.targetInfo;
-    fetch('/carry/transfer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        product_code: product.original_code,
-        target_box_id: target.ID
-      })
+  var product = window.carryState.productInfo;
+  var target = window.carryState.targetInfo;
+  fetch('/carry/transfer', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      product_code: product.original_code,
+      target_box_id: target.ID
     })
-    .then(response => response.json())
-    .then(data => {
-      if (data.status === 'success') {
-        // Воспроизводим звук успеха
-        window.AndroidAudio.playSuccess();
-        Swal.fire({
-          icon: 'success',
-          title: 'Успех',
-          text: data.message,
-          timer: 2000,
-          showConfirmButton: false
-        });
-      } else {
-        window.AndroidAudio.playError();
-        Swal.fire({
-          icon: 'error',
-          title: 'Ошибка',
-          text: data.message,
-          timer: 2000,
-          showConfirmButton: false
-        });
-      }
-      resetCarryState();
-    })
-    .catch(err => {
-      console.error(err);
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.status === 'success') {
+      // Воспроизводим звук успеха
+      window.AndroidAudio.playSuccess();
+      Swal.fire({
+        icon: 'success',
+        title: 'Успех',
+        text: data.message,
+        timer: 2000,
+        showConfirmButton: false
+      });
+    } else {
       window.AndroidAudio.playError();
       Swal.fire({
         icon: 'error',
         title: 'Ошибка',
-        text: 'Ошибка переноса.',
+        text: data.message,
         timer: 2000,
         showConfirmButton: false
       });
-      resetCarryState();
+    }
+    resetCarryState();
+  })
+  .catch(err => {
+    console.error(err);
+    window.AndroidAudio.playError();
+    Swal.fire({
+      icon: 'error',
+      title: 'Ошибка',
+      text: 'Ошибка переноса.',
+      timer: 2000,
+      showConfirmButton: false
     });
-  }
-  
+    resetCarryState();
+  });
+}
+
 
   // Сброс состояния для нового переноса
   function resetCarryState() {
@@ -176,4 +176,12 @@
   appendMessage("Режим переноса активирован. Отсканируйте товар.");
 </script>
 {% endblock %}
+
+
+
+
+
+
+
+
 

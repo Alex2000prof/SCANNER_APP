@@ -1,0 +1,35 @@
+{% extends 'layout.html' %}
+{% block title %}Содержимое коробки{% endblock %}
+{% block content %}
+
+<h2>Содержимое коробки</h2>
+
+{% if items and items|length > 0 %}
+  <ul class="items-list compact-list">
+    {% for it in items %}
+    <li class="scanned-item">
+      <div class="item-row">
+        <span class="item-number">{{ loop.index }}.</span>
+        <span class="item-uniq">[{{ it.Uniq }}]</span>
+        <span class="item-articul">{{ it.Articul }}</span>
+        <span class="item-sizeheight">{{ it.SizeHeight }}</span>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+
+<style>
+.scanned-item {
+  background-color: #e8f5e9;
+}
+</style>
+
+{% else %}
+  <p>В этой коробке пока нет отсканированных товаров.</p>
+{% endif %}
+
+<a href="{{ url_for('priemka_scan', id_case=request.view_args['id_case']) }}" class="back-button">
+  Назад к сканированию
+</a>
+
+{% endblock %}

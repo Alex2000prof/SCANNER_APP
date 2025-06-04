@@ -3,10 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <title>Перенос товара</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <!-- Подключаем SweetAlert2 для модальных окон -->
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <!-- <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"> -->
+
+
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap');
+    html, body {
+      font-family: 'Montserrat', sans-serif;
+    }
     html, body {
     overflow-x: hidden;
     margin: 0;
@@ -28,8 +35,8 @@
       width: 90%;
       max-width: 600px;
       background: #fff;
-      border: 3px solid #ff3c00;
-      border-radius: 10px;
+      border: 1px solid #ff3c00;
+      border-radius: 0px;
       box-shadow: 0 8px 16px rgba(0,0,0,0.15);
       position: relative;
       padding: 20px 20px 60px 20px;
@@ -492,6 +499,94 @@
   opacity: 1;
   pointer-events: auto;
 }
+/* Класс для скрытия блока */
+.hidden {
+  display: none;
+}
+
+/* Класс для «затемнения» блока Количество */
+.grayed {
+  opacity: 0.5;
+  pointer-events: none;
+}
+/* Контейнер всех трёх кнопок */
+.buttons-block {
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto 2em;
+  box-sizing: border-box;
+}
+
+/* Первый ряд: две кнопки рядом */
+.buttons-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+.buttons-row a {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  padding: .8em 0;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 1.2em;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  transition: background .3s, transform .1s;
+}
+
+/* Градиентная кнопка */
+.btn-primary {
+  background: linear-gradient(135deg, #33a7ff, #a0e1ff);
+}
+.btn-primary:hover {
+  background: linear-gradient(135deg, #14d0ff, #02a2ff);
+}
+
+/* Чёрные кнопки */
+.btn-secondary,
+.complete-btn {
+  background: #333;
+}
+.btn-secondary:hover,
+.complete-btn:hover {
+  background: #555;
+}
+.complete-btn {
+  display: block;
+  width: 100%;
+  padding: .8em 0;
+  margin: 0;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 1.2em;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  transition: background .3s, transform .1s;
+}
+/* Фиксируем «оранжевый» контейнер на весь экран */
+.transfer-container {
+  position: fixed;      /* привязать к окну */
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  padding: 5px;        /* небольшой отступ от границ */
+  box-sizing: border-box;
+  overflow-y: auto;     /* вертикальный скролл при необходимости */
+  overflow-x: hidden;   /* по горизонтали прокрутки не будет */
+}
+
+/* Отключаем скролл у html/body */
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100%;
+}
 
   </style>
 </head>
@@ -503,7 +598,7 @@
         Перенос<br>товара
       </div>
       <div class="remaining-tasks">
-        Осталось: {{ task.remaining_tasks }} задач
+        Осталось задач: {{ task.remaining_tasks }}
       </div>
     </div>
     <button class="info-icon" id="infoIcon" title="Информация">ℹ︎</button>
@@ -515,9 +610,11 @@
           </svg>
         </button>
         <div id="filterMenu" class="filter-menu" style="padding: 12px;">
-            <a href="?mode=default" class="filter-choice">📦 Умный</a>
-            <a href="?mode=articul" class="filter-choice">🔤 Артикулы</a>
-          </div>
+          <a href="{{ url_for('transfer', mode='default', queue=queue) }}"
+             class="filter-choice">📦 Умный</a>
+          <a href="{{ url_for('transfer', mode='articul', queue=queue) }}"
+             class="filter-choice">🔤 Артикулы</a>
+        </div>
 
 
     <div class="info-popup" id="infoPopup">
@@ -568,7 +665,7 @@
         </div>
         <div class="info-card" id="sizeCard">
           <div class="card-label">Ра/Ро</div>
-          <div class="card-value" id="sizeHeight">{{ task.hs }}</div>
+          <div class="card-value" id="sizeHeightValue">{{ task.sizes }}/{{ task.heightsrus }}</div>
         </div>
         <div class="info-card" id="countCard">
           <div class="card-label">Штук</div>
@@ -594,7 +691,6 @@
         <strong id="plannedCount">{{ task.counts }}</strong>
       </p>
     
-      <!-- Кнопка «Готово» -->
       <button id="finishScan" class="btn finish-scan" style="display: none;">
         Готово
       </button>
@@ -602,7 +698,7 @@
 
     
     <!-- Секция "Куда" -->
-    <div class="transfer-section target-section" id="targetSection">
+    <div class="transfer-section target-section hidden" id="targetSection">
         <button class="section-info" data-target="popup-target">❔</button>
         <div id="popup-target" class="section-popup">
         <table>
@@ -631,14 +727,41 @@
       <p id="targetStatus" class="status-text">Ожидание сканирования целевой ячейки...</p>
     </div>
     
-    <!-- Нижний блок кнопок -->
-    <div class="bottom-buttons">
-      <a class="skip-btn" id="skipBtn"
-      href="/transfer?skip={{ task.task_number }}&mode={{ request.args.get('mode', 'default') }}">
-      Пропустить
+    <div class="buttons-block">
+    <!-- Ряд из двух кнопок -->
+    <div class="buttons-row">
+      <a id="skipBtn"
+         class="btn-primary"
+         href="{{ url_for('transfer',
+                         skip=task.task_number,
+                         queue=queue) }}">
+        Пропустить
       </a>
-      <a href="{{ url_for('queues') }}" class="back-btn">Вернуться</a>
+      {% if request.args.get('mode') %}
+        <a class="btn-secondary"
+           href="{{ url_for('queue_turn',
+                           turn=queue) }}">
+          Вернуться
+        </a>
+      {% else %}
+        <a class="btn-secondary"
+           href="{{ url_for('queue_turn', turn=queue) }}">
+          Вернуться
+        </a>
+      {% endif %}
     </div>
+  
+    <!-- Под ними — одна большая кнопка -->
+    <form method="post" action="{{ url_for('split_order') }}">
+      <input type="hidden" name="order_id" value="{{ task.id_orders }}">
+
+      <input type="hidden" name="turn"     value="{{ queue }}">
+      <input type="hidden" name="mode"     value="{{ request.args.get('mode','') }}">
+      <button type="submit" class="complete-btn">
+        Завершить работу
+      </button>
+    </form>
+    
   </div>
   
   <script>
@@ -759,9 +882,9 @@
     });
 
     // Кнопка "Пропустить" - переходит к следующей задаче
-    skipBtn.addEventListener("click", function() {
-      window.location.href = "/transfer";
-    });
+    // skipBtn.addEventListener("click", function() {
+    //   window.location.href = "/transfer";
+    // });
 
     // Эмуляция сканирования через сканер штрих-кодов
     // Эмуляция сканирования через сканер штрих-кодов
@@ -802,6 +925,7 @@
         .then(r => r.json())
         .then(data => {
           if (data.status === 'success') {
+            window.AndroidAudio.playSuccess();
             // обновляем счётчик
             taskState.scannedCount = data.scanned_count;
             taskState.scannedCodes.add(scannedCode);
@@ -816,19 +940,19 @@
               finishBtn.click();
             }
           } else {
+            window.AndroidAudio.playError();
             Swal.fire({ title: data.message, icon: 'error' });
           }
         })
-        .catch(err => Swal.fire({ title: 'Сетевая ошибка', text: err.message, icon: 'error' }));
+        .catch(err => {
+          window.AndroidAudio.playError();
+          Swal.fire({ title: 'Сетевая ошибка', text: err.message, icon: 'error' });
+        });
 
         return;
       }
 
-      // 3) Скан «Куда»
-      if (taskState.quantityConfirmed && !taskState.targetScanned) {
-        processTargetScan(scannedCode);
-        return;
-      }
+
       
         // 3) Сканирование целевой ячейки (секция «Куда»)
         if (taskState.quantityConfirmed && !taskState.targetScanned) {
@@ -848,6 +972,7 @@
   .then(res => res.json())
   .then(data => {
     if (data.status === 'success') {
+      window.AndroidAudio.playSuccess();
       // ВАЖНО: сначала ставим флаг
       taskState.sourceScanned = true;
 
@@ -855,7 +980,9 @@
       document.getElementById('sourceSection').classList.add('confirmed');
       document.getElementById('sourceCell').classList.add('confirmed-cell');
       quantitySection.style.display = 'block';
+      quantitySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } else {
+      window.AndroidAudio.playError();
       sourceStatusEl.textContent = data.message;
       sourceStatusEl.style.color = 'red';
       setTimeout(() => sourceStatusEl.textContent = '', 2000);
@@ -864,31 +991,102 @@
 }
 
 
-  function processTargetScan(scannedCode) {
-    fetch('/transfer/validate_target', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({cell_code: scannedCode, task_id: TASK_ID})
-    })
-    .then(res => res.json())
-    .then(data => {
-      if (data.status === 'success') {
-        // --- здесь ваш существующий код успешного скана «Куда» ---
-        document.getElementById('targetSection').classList.add('confirmed');
-        document.getElementById('targetCell').classList.add('confirmed-cell');
-        targetStatusEl.textContent = 'Ячейка подтверждена';
-        targetStatusEl.style.color = 'green';
-        setTimeout(() => window.location.href = '/transfer', 1500);
+// замените текущую функцию processTargetScan на:
+function processTargetScan(scannedCode) {
+  fetch('/transfer/validate_target', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({cell_code: scannedCode, task_id: TASK_ID})
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.status === 'success') {
+      window.AndroidAudio.playSuccess();
+      // UI-обновление
+      document.getElementById('targetSection').classList.add('confirmed');
+      document.getElementById('targetCell').classList.add('confirmed-cell');
+      targetStatusEl.textContent = 'Ячейка подтверждена';
+      targetStatusEl.style.color = 'green';
+      // теперь вызываем update_task
+      return fetch('/transfer/update_task', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          id_task: TASK_ID,
+          counts: taskState.scannedCount
+        })
+      });
+    } else {
+      window.AndroidAudio.playError();
+      throw new Error(data.message);
+    }
+  })
+  .then(res => res.json())
+  .then(res => {
+    if (res.status === 'success') {
+      if (res.remaining_tasks === 0) {
+        // Последняя задача — переходим в split_order для следующего заказа
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = "{{ url_for('split_order') }}";
+  
+        form.innerHTML = `
+          <input type="hidden" name="order_id" value="${res.order_id}">
+          <input type="hidden" name="turn"     value="{{ queue }}">
+        `;
+        document.body.appendChild(form);
+        form.submit();
       } else {
-        targetStatusEl.textContent = data.message;
-        targetStatusEl.style.color = 'red';
-        setTimeout(() => {
-          targetStatusEl.textContent = 'Ожидание сканирования целевой ячейки...';
-          targetStatusEl.style.color = '#888';
-        }, 2000);
+        // Ещё есть задачи — к следующему таску
+        window.location.href = `{{ url_for('transfer') }}?queue={{ queue }}&mode={{ mode }}`;
       }
-    });
-  }
+    } else {
+      Swal.fire({ title: res.message || 'Ошибка', icon: 'error' });
+    }
+  })
+  
+  .catch(err => Swal.fire({ title: 'Ошибка', text: err.message, icon: 'error' }));
+}
+
+  // Общий сброс состояния и интерфейса кнопкой «Назад»
+  const backBtn       = document.getElementById('backToScan');
+  const scannedCount  = document.getElementById('scannedCount');
+  const finishBtn     = document.getElementById('finishScan');
+  const quantitySec   = document.getElementById('quantitySection');
+  <!-- const quantityInput = quantitySec.querySelector('input[type="number"]'); -->
+  const confirmBtn    = quantitySec.querySelector('.btn.finish-scan') || quantitySec.querySelector('.btn');
+  const countCard     = document.getElementById('countCard');
+  const targetSec     = document.getElementById('targetSection');
+
+  backBtn.addEventListener('click', async function(e) {
+    e.preventDefault();
+
+    // 1) (Опционально) сбросить на сервере
+    try { await fetch("{{ url_for('clear_scans') }}", { method: 'POST' }); } 
+    catch (err) { console.warn('Серверный сброс не прошёл:', err); }
+
+    // 2) Сброс client-side состояния
+    taskState.scannedCount      = 0;
+    taskState.scannedCodes      = new Set();
+    taskState.quantityConfirmed = false;
+
+    // 3) Обнулить счётчик и скрыть кнопку «Готово»
+    scannedCount.textContent = '0';
+    if (finishBtn) finishBtn.style.display = 'none';
+
+    // 4) Вернуть секцию «Количество» к исходному виду
+    quantitySec.classList.remove('confirmed', 'grayed');
+    quantityInput.value    = '';
+    quantityInput.disabled = false;
+    confirmBtn.disabled    = false;
+
+    // 5) Восстановить карточку «Штук»
+    countCard.style.background = '#ff3c00';
+    countCard.querySelector('.card-value').textContent = "{{ task.counts }}";
+
+    // 6) Скрыть секцию «Куда»
+    targetSec.classList.add('hidden');
+  });
 
 
   confirmQtyBtn.addEventListener('click', function() {
@@ -930,17 +1128,7 @@
     }
   });
 
-   backQtyBtn.addEventListener("click", function() {
-      // Возвращаем блок "Количество" в исходное состояние
-      quantityInput.value = "";
-      document.getElementById('quantitySection').classList.remove("confirmed");
-      quantityInput.disabled = false;
-      confirmQtyBtn.disabled = false;
-      // Возвращаем карточку "Штук" в исходный градиент
-      let countCard = document.getElementById('countCard');
-      countCard.style.background = "#ff3c00";
-      countCard.querySelector('.card-value').textContent = "{{ task.counts }}";
-    }); 
+
     // открываем/закрываем section-popup при клике на section-info
     document.querySelectorAll('.section-info').forEach(btn => {
       btn.addEventListener('click', e => {
@@ -967,27 +1155,96 @@
     });
     
 
-  // Кнопка «Назад» — возвращает к сканированию товаров
-  document.getElementById('backToScan').addEventListener('click', () => {
-    taskState.quantityConfirmed = false;
-    // убираем подсветку, возвращаем интерактивность
-    const qtySec = document.getElementById('quantitySection');
-    qtySec.classList.remove('confirmed', 'active', 'grayed');
-    document.getElementById('finishScan').style.display = 'none';
-  });
+
+  
 
   // Кнопка «Готово» — переходим к блоку «Куда»
   document.getElementById('finishScan').addEventListener('click', () => {
+    // затемняем кол-во
+    document.getElementById('quantitySection').classList.add('grayed');
+  
+    // показываем Куда
+    const tgtSec = document.getElementById('targetSection');
+    tgtSec.classList.remove('hidden');
+  
+    // плавно скроллим к нему
+    tgtSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  
+    // фокус на инпут
+    document.getElementById('targetInputField').focus();
+  
     taskState.quantityConfirmed = true;
-    const qtySec = document.getElementById('quantitySection');
-    qtySec.classList.add('grayed');        // делаем серым весь блок (кроме кнопки «Назад»)
-    qtySec.classList.remove('active');     // убираем желтую подсветку
-    qtySec.classList.add('confirmed');
-    // подсветка блока «Куда»
-    document.getElementById('targetSection').classList.add('active');
   });
+  
+  
 
+  document.getElementById('saveTargetBtn').addEventListener('click', async () => {
+    const counts = parseInt(document.getElementById('scannedCount').textContent);
+    const planned = parseInt(document.getElementById('plannedCount').textContent);
+    const idTask = Number("{{ task.task_number }}");
+
+  
+    const proceed = counts === planned || await Swal.fire({
+      title: 'Количество отличается!',
+      text: `Вы отсканировали ${counts}, план — ${planned}. Продолжить?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Да',
+      cancelButtonText: 'Нет'
+    }).then(result => result.isConfirmed);
+  
+    if (!proceed) return;
+  
+    const response = await fetch('/transfer/update_task', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_task: idTask, counts: counts })
+    });
+  
+    const result = await response.json();
+    if (result.status === 'success') {
+      window.location.href = '/transfer'; // переходим к следующей задаче
+    } else {
+      Swal.fire('Ошибка', result.message || 'Не удалось обновить задачу', 'error');
+    }
+  });
 
   </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

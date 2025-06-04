@@ -1,33 +1,77 @@
-{% extends 'layout.html' %}
-{% block title %}Коробки{% endblock %}
-{% block content %}
+{% extends 'layout.html' %} {% block title %}Коробки{% endblock %} {% block
+content %}
+
+<style>
+  .swal2-confirm-print,
+  .swal2-cancel-print {
+    min-width: 120px !important;
+    height: 44px !important;
+    font-size: 1.18em !important;
+    padding: 0 20px !important;
+    border-radius: 8px !important;
+    font-weight: bold !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+  }
+  .swal2-confirm-print {
+    background: linear-gradient(135deg, #ff4b2b, #ff7733) !important;
+    color: #fff !important;
+    margin-right: 8px !important;
+  }
+  .swal2-cancel-print {
+    background: #bbb !important;
+    color: #fff !important;
+    margin-left: 8px !important;
+  }
+</style>
+
 <h2>Поставка №{{ delivery_id }}</h2>
+
+<div style="text-align: center; margin-bottom: 16px">
+  <button
+    id="printLabelBtn"
+    class="icon-btn"
+    style="
+      background: linear-gradient(135deg, #ff3c00, #ff7733);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 64px;
+      height: 64px;
+      font-size: 2.4em;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(255, 60, 0, 0.16);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 14px auto;
+    "
+    title="Печать этикетки"
+  >
+    🖨
+  </button>
+</div>
 
 <!-- Ваш текущий список коробок -->
 <p>Выберите коробку:</p>
 <ul class="box-list">
-  {% for box in boxes %}
-    {% set scanned = box.Scanned %}
-    {% set total = box.Total %}
-    {% if scanned >= total %}
-      {% set box_class = 'completed' %}
-    {% elif scanned == 0 %}
-      {% set box_class = '' %}
-    {% else %}
-      {% set box_class = 'partial' %}
-    {% endif %}
+  {% for box in boxes %} {% set scanned = box.Scanned %} {% set total =
+  box.Total %} {% if scanned >= total %} {% set box_class = 'completed' %} {%
+  elif scanned == 0 %} {% set box_class = '' %} {% else %} {% set box_class =
+  'partial' %} {% endif %}
 
-    <li class="{{ box_class }}">
-      <div class="box-info">
-        <div class="box-title">Коробка №{{ box.NumCase }}</div>
-        <div class="box-count">{{ scanned }}/{{ total }} шт.</div>
-      </div>
-      <!-- Кнопка «Сканировать» -->
-      <a class="scan-link"
-         href="{{ url_for('scan_box', box_id=box.ID_Case) }}">
-        Сканировать
-      </a>
-    </li>
+  <li class="{{ box_class }}">
+    <div class="box-info">
+      <div class="box-title">Коробка №{{ box.NumCase }}</div>
+      <div class="box-count">{{ scanned }}/{{ total }} шт.</div>
+    </div>
+    <!-- Кнопка «Сканировать» -->
+    <a class="scan-link" href="{{ url_for('scan_box', box_id=box.ID_Case) }}">
+      Сканировать
+    </a>
+  </li>
   {% endfor %}
 </ul>
 
@@ -36,7 +80,7 @@
   <button type="submit">Вернуться в главное меню</button>
 </form>
 
-<hr>
+<hr />
 
 <!-- Новое поле ввода: если отсканировать:
      - "1677" (без дефиса) => считаем «номер поставки», переходим на /boxes (другой)
@@ -44,7 +88,7 @@
 -->
 <!-- ... предыдущий контент страницы boxes.html ... -->
 
-<hr>
+<hr />
 
 <div class="search-container">
   <h3 class="search-title">Перейти к другой поставке или коробке</h3>
@@ -61,17 +105,98 @@
   </form>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
-  const boxesSearchForm  = document.getElementById('boxesSearchForm');
-  const boxesSearchInput = document.getElementById('boxesSearchInput');
+  // --- ОБЪЯВЛЯЕМ ВСЕ ЭЛЕМЕНТЫ ОДИН РАЗ ---
+  const boxesSearchForm = document.getElementById("boxesSearchForm");
+  const boxesSearchInput = document.getElementById("boxesSearchInput");
+  const printBtn = document.getElementById("printLabelBtn");
 
-  // При загрузке страницы – фокус на поле ввода
-  document.addEventListener('DOMContentLoaded', () => {
-    boxesSearchInput.focus();
+  // --- ГЛАЗ ВСЕГДА СВЕРХУ, ФОКУС ДЛЯ СКАНА ---
+  document.addEventListener("DOMContentLoaded", () => {
+    window.scrollTo(0, 0);
+    setTimeout(() => {
+      if (!window._disableAutoFocus && boxesSearchInput) {
+        // Фокус без скролла
+        boxesSearchInput.focus({ preventScroll: true });
+      }
+    }, 400);
   });
 
-  // Автосабмит при вставке текста (если сканер без Enter)
-  boxesSearchInput.addEventListener('paste', function(e) {
+  // --- SweetAlert2 МОДАЛКА ---
+  printBtn.addEventListener("click", async function (e) {
+    e.preventDefault();
+    window._disableAutoFocus = true;
+
+    const { value: count } = await Swal.fire({
+      title: "Печать этикеток",
+      html: `
+      <input id="swal-input-count"
+        class="swal2-input"
+        type="number"
+        min="1"
+        placeholder="Кол-во"
+        style="width: 100px; padding: 5px 7px; font-size: 1.08em; border-radius: 7px; border: 1.5px solid #ffa94d; text-align: center; margin: 0 auto;" />`,
+      showCancelButton: true,
+      confirmButtonText: "Печать",
+      cancelButtonText: "Отмена",
+      focusConfirm: false,
+      customClass: {
+        confirmButton: "swal2-confirm-print",
+        cancelButton: "swal2-cancel-print",
+      },
+      preConfirm: () => {
+        const value = parseInt(
+          document.getElementById("swal-input-count").value,
+          10
+        );
+        if (!value || value < 1) {
+          Swal.showValidationMessage("Укажите количество!");
+          return false;
+        }
+        return value;
+      },
+      didClose: () => {
+        window._disableAutoFocus = false;
+        // Вернуть фокус на скан с preventScroll
+        boxesSearchInput.focus({ preventScroll: true });
+      },
+    });
+
+    if (count && count > 0) {
+      try {
+        const res = await fetch("/boxes/print_box", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ count: count }),
+        });
+        const js = await res.json();
+        Swal.fire({
+          icon: js.status === "success" ? "success" : "error",
+          title:
+            js.status === "success"
+              ? "Печать запущена!"
+              : js.error || js.message || "Ошибка",
+          timer: 1600,
+          showConfirmButton: false,
+          toast: true,
+          position: "top-end",
+        });
+      } catch {
+        Swal.fire({
+          icon: "error",
+          title: "Ошибка связи с сервером",
+          timer: 1700,
+          showConfirmButton: false,
+          toast: true,
+          position: "top-end",
+        });
+      }
+    }
+  });
+
+  // --- АВТОСАБМИТ ПО ВСТАВКЕ (СКАНЕРЫ) ---
+  boxesSearchInput.addEventListener("paste", function (e) {
     setTimeout(() => {
       const code = boxesSearchInput.value.trim();
       if (code) {
@@ -80,37 +205,31 @@
     }, 100);
   });
 
-  // Фокус по нажатию F9
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'F9') {
+  // --- ФОКУС ПО F9 ---
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "F9") {
       e.preventDefault();
-      boxesSearchInput.focus();
+      boxesSearchInput.focus({ preventScroll: true });
     }
   });
 
-  // Если поле потеряло фокус – возвращаем фокус через 200мс
-  boxesSearchInput.addEventListener('blur', () => {
+  // --- ВОЗВРАЩЕНИЕ ФОКУСА ПОСЛЕ BLUR ---
+  boxesSearchInput.addEventListener("blur", () => {
     setTimeout(() => {
-      if (document.activeElement !== boxesSearchInput) {
-        boxesSearchInput.focus();
+      if (
+        document.activeElement !== boxesSearchInput &&
+        !window._disableAutoFocus
+      ) {
+        boxesSearchInput.focus({ preventScroll: true });
       }
     }, 200);
   });
-</script>
 
-<script>
-  window.onBarcodeScanned = function(scannedCode) {
-    console.log("Сканирован код на boxes:", scannedCode);
-    const boxesSearchInput = document.getElementById('boxesSearchInput');
+  // --- ОБРАБОТКА ВНЕШНЕГО СКАНА ---
+  window.onBarcodeScanned = function (scannedCode) {
     boxesSearchInput.value = scannedCode;
-    document.getElementById('boxesSearchForm').submit();
+    boxesSearchForm.submit();
   };
 </script>
 
-
 {% endblock %}
-
-
-
-  
-    
