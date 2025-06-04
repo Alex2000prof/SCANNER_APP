@@ -15,11 +15,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-db_server = "31.130.38.131"
-db_port = "27020"
-db_name = "u1603085_Dite"
-db_user = "u1603085_Maxim"
-db_password = "i!r5z99R"
+db_server = ""
+db_port = ""
+db_name = ""
+db_user = ""
+db_password = ""
 
 app = Flask(__name__)   
 app.secret_key = "Eo9HC!Dk39Q0XyF2uB^#hLzv"
