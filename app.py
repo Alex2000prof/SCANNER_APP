@@ -22,7 +22,7 @@ db_user = ""
 db_password = ""
 
 app = Flask(__name__)   
-app.secret_key = "Eo9HC!Dk39Q0XyF2uB^#hLzv"
+app.secret_key = ""
 
 def connect_to_db():
     try:
